@@ -65,7 +65,7 @@ func TestAddPort(t *testing.T) {
 func TestReconcileLoadBalancerAddServiceOnInternalSubnet(t *testing.T) {
 	az := getTestCloud()
 	svc := getInternalTestService("servicea", 80)
-	addTestSubnet(t, &svc)
+	addTestSubnet(t, az, &svc)
 
 	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
@@ -85,31 +85,42 @@ func TestReconcileLoadBalancerAddServicesOnMultipleSubnets(t *testing.T) {
 	az := getTestCloud()
 	svc1 := getTestService("service1", v1.ProtocolTCP, 8081)
 	svc2 := getInternalTestService("service2", 8081)
-	addTestSubnet(t, &svc2)
 
+	// Internal and External service cannot reside on the same LB resource
+	addTestSubnet(t, az, &svc2)
+
+	// svc1 is using LB without "-internal" suffix
 	lb, err := az.reconcileLoadBalancer(testClusterName, &svc1, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling svc1: %q", err)
 	}
 
+	// ensure we got a frontend ip configuration for each service
+	if len(*lb.FrontendIPConfigurations) != 1 {
+		t.Error("Expected the loadbalancer to have 1 frontend ip configurations")
+	}
+
+	validateLoadBalancer(t, lb, svc1)
+
+	// svc2 is using LB with "-internal" suffix
 	lb, err = az.reconcileLoadBalancer(testClusterName, &svc2, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling svc2: %q", err)
 	}
 
 	// ensure we got a frontend ip configuration for each service
-	if len(*lb.FrontendIPConfigurations) != 2 {
-		t.Error("Expected the loadbalancer to have 2 frontend ip configurations")
+	if len(*lb.FrontendIPConfigurations) != 1 {
+		t.Error("Expected the loadbalancer to have 1 frontend ip configurations")
 	}
 
-	validateLoadBalancer(t, lb, svc1, svc2)
+	validateLoadBalancer(t, lb, svc2)
 }
 
 // Test moving a service exposure from one subnet to another.
 func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	az := getTestCloud()
 	svc := getInternalTestService("service1", 8081)
-	addTestSubnet(t, &svc)
+	addTestSubnet(t, az, &svc)
 
 	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
@@ -119,6 +130,7 @@ func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	validateLoadBalancer(t, lb, svc)
 
 	svc.Annotations[ServiceAnnotationLoadBalancerInternalSubnet] = "NewSubnet"
+	addTestSubnet(t, az, &svc)
 
 	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
@@ -316,6 +328,7 @@ func getTestCloud() *Cloud {
 			TenantID:          "tenant",
 			SubscriptionID:    "subscription",
 			ResourceGroup:     "rg",
+			VnetResourceGroup: "rg",
 			Location:          "westus",
 			VnetName:          "vnet",
 			SubnetName:        "subnet",
@@ -326,6 +339,7 @@ func getTestCloud() *Cloud {
 	r.operationPollRateLimiter = flowcontrol.NewTokenBucketRateLimiter(100, 100)
 	r.LoadBalancerClient = NewFakeAzureLBClient()
 	r.PublicIPAddressesClient = NewFakeAzurePIPClient()
+	r.SubnetsClient = NewFakeAzureSubnetsClient()
 	return r
 }
 
@@ -990,9 +1004,29 @@ func TestMetadataParsing(t *testing.T) {
 	}
 }
 
-func addTestSubnet(t *testing.T, svc *v1.Service) {
+func addTestSubnet(t *testing.T, az *Cloud, svc *v1.Service) {
 	if svc.Annotations[ServiceAnnotationLoadBalancerInternal] != "true" {
 		t.Error("Subnet added to non-internal service")
 	}
-	svc.Annotations[ServiceAnnotationLoadBalancerInternalSubnet] = "TestSubnet"
+	subName := svc.Annotations[ServiceAnnotationLoadBalancerInternalSubnet]
+	if subName == "" {
+		subName = az.SubnetName
+	}
+
+	subnetID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/virtualNetworks/%s/subnets/%s",
+		az.SubscriptionID,
+		az.VnetResourceGroup,
+		az.VnetName,
+		subName)
+
+	_, errChan := az.SubnetsClient.CreateOrUpdate(az.VnetResourceGroup, az.VnetName, subName,
+		network.Subnet{
+			ID:   &subnetID,
+			Name: &subName,
+		}, nil)
+
+	if err := <-errChan; err != nil {
+		t.Errorf("Subnet cannot be created or update, %v", err)
+	}
+	svc.Annotations[ServiceAnnotationLoadBalancerInternalSubnet] = subName
 }

@@ -129,12 +129,19 @@ type iPublicIPAddressesClient interface {
 	List(resourceGroupName string) (result network.PublicIPAddressListResult, err error)
 }
 
+type iSubnetsClient interface {
+	CreateOrUpdate(resourceGroupName string, virtualNetworkName string, subnetName string, subnetParameters network.Subnet, cancel <-chan struct{}) (<-chan network.Subnet, <-chan error)
+	Delete(resourceGroupName string, virtualNetworkName string, subnetName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
+	Get(resourceGroupName string, virtualNetworkName string, subnetName string, expand string) (result network.Subnet, err error)
+	List(resourceGroupName string, virtualNetworkName string) (result network.SubnetListResult, err error)
+}
+
 // Cloud holds the config and clients
 type Cloud struct {
 	Config
 	Environment              azure.Environment
 	RoutesClient             network.RoutesClient
-	SubnetsClient            network.SubnetsClient
+	SubnetsClient            iSubnetsClient
 	InterfacesClient         network.InterfacesClient
 	RouteTablesClient        network.RouteTablesClient
 	LoadBalancerClient       iLoadBalancersClient
@@ -235,11 +242,12 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 		return nil, err
 	}
 
-	az.SubnetsClient = network.NewSubnetsClient(az.SubscriptionID)
-	az.SubnetsClient.BaseURI = az.Environment.ResourceManagerEndpoint
-	az.SubnetsClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
-	az.SubnetsClient.PollingDelay = 5 * time.Second
-	configureUserAgent(&az.SubnetsClient.Client)
+	subnetsClient := network.NewSubnetsClient(az.SubscriptionID)
+	subnetsClient.BaseURI = az.Environment.ResourceManagerEndpoint
+	subnetsClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+	subnetsClient.PollingDelay = 5 * time.Second
+	configureUserAgent(&subnetsClient.Client)
+	az.SubnetsClient = subnetsClient
 
 	az.RouteTablesClient = network.NewRouteTablesClient(az.SubscriptionID)
 	az.RouteTablesClient.BaseURI = az.Environment.ResourceManagerEndpoint
