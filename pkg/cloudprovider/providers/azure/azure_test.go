@@ -340,6 +340,17 @@ func getTestCloud() *Cloud {
 	r.LoadBalancerClient = NewFakeAzureLBClient()
 	r.PublicIPAddressesClient = NewFakeAzurePIPClient()
 	r.SubnetsClient = NewFakeAzureSubnetsClient()
+	r.SecurityGroupsClient = NewFakeAzureNSGClient()
+	// We currently always assume NSG resource created with k8s cluster
+	// We never try to create NSG resource in service
+	// To accommodate that in test, we create an empty NSG resource when we get TestCloud
+	r.SecurityGroupsClient.CreateOrUpdate(
+		r.ResourceGroup,
+		r.SecurityGroupName,
+		network.SecurityGroup{
+			Name: &r.SecurityGroupName,
+		},
+		nil)
 	return r
 }
 

@@ -136,6 +136,13 @@ type iSubnetsClient interface {
 	List(resourceGroupName string, virtualNetworkName string) (result network.SubnetListResult, err error)
 }
 
+type iSecurityGroupsClient interface {
+	CreateOrUpdate(resourceGroupName string, networkSecurityGroupName string, parameters network.SecurityGroup, cancel <-chan struct{}) (<-chan network.SecurityGroup, <-chan error)
+	Delete(resourceGroupName string, networkSecurityGroupName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
+	Get(resourceGroupName string, networkSecurityGroupName string, expand string) (result network.SecurityGroup, err error)
+	List(resourceGroupName string) (result network.SecurityGroupListResult, err error)
+}
+
 // Cloud holds the config and clients
 type Cloud struct {
 	Config
@@ -146,7 +153,7 @@ type Cloud struct {
 	RouteTablesClient        network.RouteTablesClient
 	LoadBalancerClient       iLoadBalancersClient
 	PublicIPAddressesClient  iPublicIPAddressesClient
-	SecurityGroupsClient     network.SecurityGroupsClient
+	SecurityGroupsClient     iSecurityGroupsClient
 	VirtualMachinesClient    compute.VirtualMachinesClient
 	StorageAccountClient     storage.AccountsClient
 	DisksClient              disk.DisksClient
@@ -283,11 +290,12 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 	configureUserAgent(&publicIPAddressClient.Client)
 	az.PublicIPAddressesClient = publicIPAddressClient
 
-	az.SecurityGroupsClient = network.NewSecurityGroupsClient(az.SubscriptionID)
-	az.SecurityGroupsClient.BaseURI = az.Environment.ResourceManagerEndpoint
-	az.SecurityGroupsClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
-	az.SecurityGroupsClient.PollingDelay = 5 * time.Second
-	configureUserAgent(&az.SecurityGroupsClient.Client)
+	securityGroupsClient := network.NewSecurityGroupsClient(az.SubscriptionID)
+	securityGroupsClient.BaseURI = az.Environment.ResourceManagerEndpoint
+	securityGroupsClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+	securityGroupsClient.PollingDelay = 5 * time.Second
+	configureUserAgent(&securityGroupsClient.Client)
+	az.SecurityGroupsClient = securityGroupsClient
 
 	az.StorageAccountClient = storage.NewAccountsClientWithBaseURI(az.Environment.ResourceManagerEndpoint, az.SubscriptionID)
 	az.StorageAccountClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
