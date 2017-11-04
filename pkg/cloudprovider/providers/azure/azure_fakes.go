@@ -2,6 +2,7 @@ package azure
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/Azure/go-autorest/autorest"
@@ -170,6 +171,96 @@ func (fAPC fakeAzurePIPClient) List(resourceGroupName string) (result network.Pu
 	var value []network.PublicIPAddress
 	if _, ok := fAPC.FakeStore[resourceGroupName]; ok {
 		for _, v := range fAPC.FakeStore[resourceGroupName] {
+			value = append(value, v)
+		}
+	}
+	result.Response.Response = &http.Response{
+		StatusCode: http.StatusOK,
+	}
+	result.NextLink = nil
+	result.Value = &value
+	return result, nil
+}
+
+type fakeAzureSubnetsClient struct {
+	FakeStore map[string]map[string]network.Subnet
+}
+
+func NewFakeAzureSubnetsClient() fakeAzureSubnetsClient {
+	fASC := fakeAzureSubnetsClient{}
+	fASC.FakeStore = make(map[string]map[string]network.Subnet)
+	return fASC
+}
+
+func (fASC fakeAzureSubnetsClient) CreateOrUpdate(resourceGroupName string, virtualNetworkName string, subnetName string, subnetParameters network.Subnet, cancel <-chan struct{}) (<-chan network.Subnet, <-chan error) {
+	resultChan := make(chan network.Subnet, 1)
+	errChan := make(chan error, 1)
+	var result network.Subnet
+	var err error
+	defer func() {
+		resultChan <- result
+		errChan <- err
+		close(resultChan)
+		close(errChan)
+	}()
+	rgVnet := strings.Join([]string{resourceGroupName, virtualNetworkName}, "AND")
+	if _, ok := fASC.FakeStore[rgVnet]; !ok {
+		fASC.FakeStore[rgVnet] = make(map[string]network.Subnet)
+	}
+	fASC.FakeStore[rgVnet][subnetName] = subnetParameters
+	result = fASC.FakeStore[rgVnet][subnetName]
+	err = nil
+	return resultChan, errChan
+}
+
+func (fASC fakeAzureSubnetsClient) Delete(resourceGroupName string, virtualNetworkName string, subnetName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error) {
+	respChan := make(chan autorest.Response, 1)
+	errChan := make(chan error, 1)
+	var resp autorest.Response
+	var err error
+	defer func() {
+		respChan <- resp
+		errChan <- err
+		close(respChan)
+		close(errChan)
+	}()
+
+	rgVnet := strings.Join([]string{resourceGroupName, virtualNetworkName}, "AND")
+	if _, ok := fASC.FakeStore[rgVnet]; ok {
+		if _, ok := fASC.FakeStore[rgVnet][subnetName]; ok {
+			delete(fASC.FakeStore[rgVnet], subnetName)
+			resp.Response = &http.Response{
+				StatusCode: http.StatusAccepted,
+			}
+			err = nil
+		}
+	}
+	resp.Response = &http.Response{
+		StatusCode: http.StatusNotFound,
+	}
+	err = autorest.DetailedError{
+		StatusCode: http.StatusNotFound,
+		Message:    "Not such Subnet",
+	}
+	return respChan, errChan
+}
+func (fASC fakeAzureSubnetsClient) Get(resourceGroupName string, virtualNetworkName string, subnetName string, expand string) (result network.Subnet, err error) {
+	rgVnet := strings.Join([]string{resourceGroupName, virtualNetworkName}, "AND")
+	if _, ok := fASC.FakeStore[rgVnet]; ok {
+		if entity, ok := fASC.FakeStore[rgVnet][subnetName]; ok {
+			return entity, nil
+		}
+	}
+	return result, autorest.DetailedError{
+		StatusCode: http.StatusNotFound,
+		Message:    "Not such Subnet",
+	}
+}
+func (fASC fakeAzureSubnetsClient) List(resourceGroupName string, virtualNetworkName string) (result network.SubnetListResult, err error) {
+	rgVnet := strings.Join([]string{resourceGroupName, virtualNetworkName}, "AND")
+	var value []network.Subnet
+	if _, ok := fASC.FakeStore[rgVnet]; ok {
+		for _, v := range fASC.FakeStore[rgVnet] {
 			value = append(value, v)
 		}
 	}

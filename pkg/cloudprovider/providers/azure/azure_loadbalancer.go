@@ -330,6 +330,7 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 	if lb.FrontendIPConfigurations != nil {
 		newConfigs = *lb.FrontendIPConfigurations
 	}
+
 	if !wantLb {
 		for i := len(newConfigs) - 1; i >= 0; i-- {
 			config := newConfigs[i]
@@ -375,9 +376,7 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 				}
 
 				configProperties := network.FrontendIPConfigurationPropertiesFormat{
-					Subnet: &network.Subnet{
-						ID: subnet.ID,
-					},
+					Subnet: &subnet,
 				}
 
 				loadBalancerIP := service.Spec.LoadBalancerIP
