@@ -103,7 +103,6 @@ func (az *Cloud) getSecurityGroup() (sg network.SecurityGroup, exists bool, err 
 
 func (az *Cloud) getAzureLoadBalancer(name string) (lb network.LoadBalancer, exists bool, err error) {
 	var realErr error
-
 	az.operationPollRateLimiter.Accept()
 	glog.V(10).Infof("LoadBalancerClient.Get(%s): start", name)
 	lb, err = az.LoadBalancerClient.Get(az.ResourceGroup, name, "")
