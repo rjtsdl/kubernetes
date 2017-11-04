@@ -277,7 +277,6 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 	isInternal := requiresInternalLoadBalancer(service)
 	lbName := getLoadBalancerName(clusterName, isInternal)
 	serviceName := getServiceName(service)
-
 	lb, existsLb, err := az.getAzureLoadBalancer(lbName)
 	if err != nil {
 		return nil, err

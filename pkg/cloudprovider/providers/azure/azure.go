@@ -115,6 +115,13 @@ type Config struct {
 	UseManagedIdentityExtension bool `json:"useManagedIdentityExtension"`
 }
 
+type iLoadBalancersClient interface {
+	CreateOrUpdate(resourceGroupName string, loadBalancerName string, parameters network.LoadBalancer, cancel <-chan struct{}) (<-chan network.LoadBalancer, <-chan error)
+	Delete(resourceGroupName string, loadBalancerName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
+	Get(resourceGroupName string, loadBalancerName string, expand string) (result network.LoadBalancer, err error)
+	List(resourceGroupName string) (result network.LoadBalancerListResult, err error)
+}
+
 // Cloud holds the config and clients
 type Cloud struct {
 	Config
@@ -123,7 +130,7 @@ type Cloud struct {
 	SubnetsClient            network.SubnetsClient
 	InterfacesClient         network.InterfacesClient
 	RouteTablesClient        network.RouteTablesClient
-	LoadBalancerClient       network.LoadBalancersClient
+	LoadBalancerClient       iLoadBalancersClient
 	PublicIPAddressesClient  network.PublicIPAddressesClient
 	SecurityGroupsClient     network.SecurityGroupsClient
 	VirtualMachinesClient    compute.VirtualMachinesClient
@@ -241,11 +248,12 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 	az.InterfacesClient.PollingDelay = 5 * time.Second
 	configureUserAgent(&az.InterfacesClient.Client)
 
-	az.LoadBalancerClient = network.NewLoadBalancersClient(az.SubscriptionID)
-	az.LoadBalancerClient.BaseURI = az.Environment.ResourceManagerEndpoint
-	az.LoadBalancerClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
-	az.LoadBalancerClient.PollingDelay = 5 * time.Second
-	configureUserAgent(&az.LoadBalancerClient.Client)
+	loadBalancerClient := network.NewLoadBalancersClient(az.SubscriptionID)
+	loadBalancerClient.BaseURI = az.Environment.ResourceManagerEndpoint
+	loadBalancerClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+	loadBalancerClient.PollingDelay = 5 * time.Second
+	configureUserAgent(&loadBalancerClient.Client)
+	az.LoadBalancerClient = loadBalancerClient
 
 	az.VirtualMachinesClient = compute.NewVirtualMachinesClient(az.SubscriptionID)
 	az.VirtualMachinesClient.BaseURI = az.Environment.ResourceManagerEndpoint
