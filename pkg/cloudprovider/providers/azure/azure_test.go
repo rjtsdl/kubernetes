@@ -27,6 +27,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/flowcontrol"
 	serviceapi "k8s.io/kubernetes/pkg/api/v1/service"
 
 	"github.com/Azure/azure-sdk-for-go/arm/network"
@@ -36,12 +37,9 @@ import (
 var testClusterName = "testCluster"
 
 // Test additional of a new service/port.
-func TestReconcileLoadBalancerAddPort(t *testing.T) {
+func TestAddPort(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80)
-	configProperties := getTestPublicFipConfigurationProperties()
-	lb := getTestLoadBalancer()
-	nodes := []*v1.Node{}
 
 	svc.Spec.Ports = append(svc.Spec.Ports, v1.ServicePort{
 		Name:     fmt.Sprintf("port-udp-%d", 1234),
@@ -50,13 +48,9 @@ func TestReconcileLoadBalancerAddPort(t *testing.T) {
 		NodePort: getBackendPort(1234),
 	})
 
-	lb, updated, err := az.reconcileLoadBalancer(lb, &configProperties, testClusterName, &svc, nodes)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
-	}
-
-	if !updated {
-		t.Error("Expected the loadbalancer to need an update")
 	}
 
 	// ensure we got a frontend ip configuration
@@ -72,17 +66,10 @@ func TestReconcileLoadBalancerAddServiceOnInternalSubnet(t *testing.T) {
 	az := getTestCloud()
 	svc := getInternalTestService("servicea", 80)
 	addTestSubnet(t, &svc)
-	configProperties := getTestInternalFipConfigurationProperties(to.StringPtr("TestSubnet"))
-	lb := getTestLoadBalancer()
-	nodes := []*v1.Node{}
 
-	lb, updated, err := az.reconcileLoadBalancer(lb, &configProperties, testClusterName, &svc, nodes)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
-	}
-
-	if !updated {
-		t.Error("Expected the loadbalancer to need an update")
 	}
 
 	// ensure we got a frontend ip configuration
@@ -99,23 +86,15 @@ func TestReconcileLoadBalancerAddServicesOnMultipleSubnets(t *testing.T) {
 	svc1 := getTestService("service1", v1.ProtocolTCP, 8081)
 	svc2 := getInternalTestService("service2", 8081)
 	addTestSubnet(t, &svc2)
-	configProperties1 := getTestPublicFipConfigurationProperties()
-	configProperties2 := getTestInternalFipConfigurationProperties(to.StringPtr("TestSubnet"))
-	lb := getTestLoadBalancer()
-	nodes := []*v1.Node{}
 
-	lb, updated, err := az.reconcileLoadBalancer(lb, &configProperties1, testClusterName, &svc1, nodes)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc1, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling svc1: %q", err)
 	}
 
-	lb, updated, err = az.reconcileLoadBalancer(lb, &configProperties2, testClusterName, &svc2, nodes)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svc2, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling svc2: %q", err)
-	}
-
-	if !updated {
-		t.Error("Expected the loadbalancer to need an update")
 	}
 
 	// ensure we got a frontend ip configuration for each service
@@ -131,11 +110,8 @@ func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	az := getTestCloud()
 	svc := getInternalTestService("service1", 8081)
 	addTestSubnet(t, &svc)
-	configProperties := getTestInternalFipConfigurationProperties(to.StringPtr("TestSubnet"))
-	lb := getTestLoadBalancer()
-	nodes := []*v1.Node{}
 
-	lb, updated, err := az.reconcileLoadBalancer(lb, &configProperties, testClusterName, &svc, nodes)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling initial svc: %q", err)
 	}
@@ -143,15 +119,10 @@ func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	validateLoadBalancer(t, lb, svc)
 
 	svc.Annotations[ServiceAnnotationLoadBalancerInternalSubnet] = "NewSubnet"
-	configProperties = getTestInternalFipConfigurationProperties(to.StringPtr("NewSubnet"))
 
-	lb, updated, err = az.reconcileLoadBalancer(lb, &configProperties, testClusterName, &svc, nodes)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling edits to svc: %q", err)
-	}
-
-	if !updated {
-		t.Error("Expected the loadbalancer to need an update")
 	}
 
 	// ensure we got a frontend ip configuration for the service
@@ -167,18 +138,10 @@ func TestReconcileLoadBalancerNodeHealth(t *testing.T) {
 	svc := getTestService("servicea", v1.ProtocolTCP, 80)
 	svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
 	svc.Spec.HealthCheckNodePort = int32(32456)
-	configProperties := getTestPublicFipConfigurationProperties()
-	lb := getTestLoadBalancer()
 
-	nodes := []*v1.Node{}
-
-	lb, updated, err := az.reconcileLoadBalancer(lb, &configProperties, testClusterName, &svc, nodes)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
-	}
-
-	if !updated {
-		t.Error("Expected the loadbalancer to need an update")
 	}
 
 	// ensure we got a frontend ip configuration
@@ -193,23 +156,16 @@ func TestReconcileLoadBalancerNodeHealth(t *testing.T) {
 func TestReconcileLoadBalancerRemoveService(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
-	lb := getTestLoadBalancer()
-	configProperties := getTestPublicFipConfigurationProperties()
-	nodes := []*v1.Node{}
 
-	lb, updated, err := az.reconcileLoadBalancer(lb, &configProperties, testClusterName, &svc, nodes)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 	validateLoadBalancer(t, lb, svc)
 
-	lb, updated, err = az.reconcileLoadBalancer(lb, nil, testClusterName, &svc, nodes)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, false /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
-	}
-
-	if !updated {
-		t.Error("Expected the loadbalancer to need an update")
 	}
 
 	// ensure we abandoned the frontend ip configuration
@@ -224,24 +180,17 @@ func TestReconcileLoadBalancerRemoveService(t *testing.T) {
 func TestReconcileLoadBalancerRemoveAllPortsRemovesFrontendConfig(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80)
-	lb := getTestLoadBalancer()
-	configProperties := getTestPublicFipConfigurationProperties()
-	nodes := []*v1.Node{}
 
-	lb, updated, err := az.reconcileLoadBalancer(lb, &configProperties, testClusterName, &svc, nodes)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 	validateLoadBalancer(t, lb, svc)
 
 	svcUpdated := getTestService("servicea", v1.ProtocolTCP)
-	lb, updated, err = az.reconcileLoadBalancer(lb, nil, testClusterName, &svcUpdated, nodes)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, false /* wantLb*/)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
-	}
-
-	if !updated {
-		t.Error("Expected the loadbalancer to need an update")
 	}
 
 	// ensure we abandoned the frontend ip configuration
@@ -256,18 +205,18 @@ func TestReconcileLoadBalancerRemoveAllPortsRemovesFrontendConfig(t *testing.T) 
 func TestReconcileLoadBalancerRemovesPort(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
-	configProperties := getTestPublicFipConfigurationProperties()
-	nodes := []*v1.Node{}
-
-	existingLoadBalancer := getTestLoadBalancer(svc)
-
-	svcUpdated := getTestService("servicea", v1.ProtocolTCP, 80)
-	updatedLoadBalancer, _, err := az.reconcileLoadBalancer(existingLoadBalancer, &configProperties, testClusterName, &svcUpdated, nodes)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 
-	validateLoadBalancer(t, updatedLoadBalancer, svcUpdated)
+	svcUpdated := getTestService("servicea", v1.ProtocolTCP, 80)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, true /* wantLb */)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+
+	validateLoadBalancer(t, lb, svcUpdated)
 }
 
 // Test reconciliation of multiple services on same port
@@ -275,17 +224,13 @@ func TestReconcileLoadBalancerMultipleServices(t *testing.T) {
 	az := getTestCloud()
 	svc1 := getTestService("servicea", v1.ProtocolTCP, 80, 443)
 	svc2 := getTestService("serviceb", v1.ProtocolTCP, 80)
-	configProperties := getTestPublicFipConfigurationProperties()
-	nodes := []*v1.Node{}
 
-	existingLoadBalancer := getTestLoadBalancer()
-
-	updatedLoadBalancer, _, err := az.reconcileLoadBalancer(existingLoadBalancer, &configProperties, testClusterName, &svc1, nodes)
+	updatedLoadBalancer, err := az.reconcileLoadBalancer(testClusterName, &svc1, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 
-	updatedLoadBalancer, _, err = az.reconcileLoadBalancer(updatedLoadBalancer, &configProperties, testClusterName, &svc2, nodes)
+	updatedLoadBalancer, err = az.reconcileLoadBalancer(testClusterName, &svc2, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -297,9 +242,7 @@ func TestReconcileSecurityGroupNewServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
 	svc1 := getTestService("serviceea", v1.ProtocolTCP, 80)
 
-	sg := getTestSecurityGroup()
-
-	sg, _, err := az.reconcileSecurityGroup(sg, testClusterName, &svc1, true)
+	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -311,9 +254,7 @@ func TestReconcileSecurityGroupNewInternalServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
 	svc1 := getInternalTestService("serviceea", 80)
 
-	sg := getTestSecurityGroup()
-
-	sg, _, err := az.reconcileSecurityGroup(sg, testClusterName, &svc1, true)
+	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -326,10 +267,10 @@ func TestReconcileSecurityGroupRemoveService(t *testing.T) {
 	service2 := getTestService("serviceb", v1.ProtocolTCP, 82)
 
 	sg := getTestSecurityGroup(service1, service2)
-
 	validateSecurityGroup(t, sg, service1, service2)
+
 	az := getTestCloud()
-	sg, _, err := az.reconcileSecurityGroup(sg, testClusterName, &service1, false)
+	sg, err := az.reconcileSecurityGroup(testClusterName, &service1, false /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -344,7 +285,7 @@ func TestReconcileSecurityGroupRemoveServiceRemovesPort(t *testing.T) {
 	sg := getTestSecurityGroup(svc)
 
 	svcUpdated := getTestService("servicea", v1.ProtocolTCP, 80)
-	sg, _, err := az.reconcileSecurityGroup(sg, testClusterName, &svcUpdated, true)
+	sg, err := az.reconcileSecurityGroup(testClusterName, &svcUpdated, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -361,7 +302,7 @@ func TestReconcileSecurityWithSourceRanges(t *testing.T) {
 	}
 
 	sg := getTestSecurityGroup(svc)
-	sg, _, err := az.reconcileSecurityGroup(sg, testClusterName, &svc, true)
+	sg, err := az.reconcileSecurityGroup(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -370,7 +311,7 @@ func TestReconcileSecurityWithSourceRanges(t *testing.T) {
 }
 
 func getTestCloud() *Cloud {
-	return &Cloud{
+	r := &Cloud{
 		Config: Config{
 			TenantID:          "tenant",
 			SubscriptionID:    "subscription",
@@ -382,6 +323,8 @@ func getTestCloud() *Cloud {
 			RouteTableName:    "rt",
 		},
 	}
+	r.operationPollRateLimiter = flowcontrol.NewTokenBucketRateLimiter(100, 100)
+	return r
 }
 
 func getBackendPort(port int32) int32 {
@@ -480,7 +423,7 @@ func getServiceSourceRanges(service *v1.Service) []string {
 	return service.Spec.LoadBalancerSourceRanges
 }
 
-func getTestSecurityGroup(services ...v1.Service) network.SecurityGroup {
+func getTestSecurityGroup(services ...v1.Service) *network.SecurityGroup {
 	rules := []network.SecurityRule{}
 
 	for _, service := range services {
@@ -505,10 +448,10 @@ func getTestSecurityGroup(services ...v1.Service) network.SecurityGroup {
 		},
 	}
 
-	return sg
+	return &sg
 }
 
-func validateLoadBalancer(t *testing.T, loadBalancer network.LoadBalancer, services ...v1.Service) {
+func validateLoadBalancer(t *testing.T, loadBalancer *network.LoadBalancer, services ...v1.Service) {
 	expectedRuleCount := 0
 	expectedFrontendIPCount := 0
 	expectedProbeCount := 0
@@ -635,7 +578,7 @@ func describeFIPs(frontendIPs []network.FrontendIPConfiguration) string {
 	return description
 }
 
-func validateSecurityGroup(t *testing.T, securityGroup network.SecurityGroup, services ...v1.Service) {
+func validateSecurityGroup(t *testing.T, securityGroup *network.SecurityGroup, services ...v1.Service) {
 	expectedRuleCount := 0
 	for _, svc := range services {
 		for _, wantedRule := range svc.Spec.Ports {
