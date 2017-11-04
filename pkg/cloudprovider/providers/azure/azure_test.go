@@ -252,6 +252,7 @@ func TestReconcileLoadBalancerMultipleServices(t *testing.T) {
 
 func TestReconcileSecurityGroupNewServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
+	getTestSecurityGroup(az)
 	svc1 := getTestService("serviceea", v1.ProtocolTCP, 80)
 
 	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, true /* wantLb */)
@@ -264,6 +265,7 @@ func TestReconcileSecurityGroupNewServiceAddsPort(t *testing.T) {
 
 func TestReconcileSecurityGroupNewInternalServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
+	getTestSecurityGroup(az)
 	svc1 := getInternalTestService("serviceea", 80)
 
 	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, true /* wantLb */)
@@ -275,13 +277,13 @@ func TestReconcileSecurityGroupNewInternalServiceAddsPort(t *testing.T) {
 }
 
 func TestReconcileSecurityGroupRemoveService(t *testing.T) {
+	az := getTestCloud()
 	service1 := getTestService("servicea", v1.ProtocolTCP, 81)
 	service2 := getTestService("serviceb", v1.ProtocolTCP, 82)
 
-	sg := getTestSecurityGroup(service1, service2)
+	sg := getTestSecurityGroup(az, service1, service2)
 	validateSecurityGroup(t, sg, service1, service2)
 
-	az := getTestCloud()
 	sg, err := az.reconcileSecurityGroup(testClusterName, &service1, false /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
@@ -294,7 +296,7 @@ func TestReconcileSecurityGroupRemoveServiceRemovesPort(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
 
-	sg := getTestSecurityGroup(svc)
+	sg := getTestSecurityGroup(az, svc)
 
 	svcUpdated := getTestService("servicea", v1.ProtocolTCP, 80)
 	sg, err := az.reconcileSecurityGroup(testClusterName, &svcUpdated, true /* wantLb */)
@@ -313,7 +315,7 @@ func TestReconcileSecurityWithSourceRanges(t *testing.T) {
 		"10.0.0.0/32",
 	}
 
-	sg := getTestSecurityGroup(svc)
+	sg := getTestSecurityGroup(az, svc)
 	sg, err := az.reconcileSecurityGroup(testClusterName, &svc, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
@@ -341,16 +343,6 @@ func getTestCloud() *Cloud {
 	r.PublicIPAddressesClient = NewFakeAzurePIPClient()
 	r.SubnetsClient = NewFakeAzureSubnetsClient()
 	r.SecurityGroupsClient = NewFakeAzureNSGClient()
-	// We currently always assume NSG resource created with k8s cluster
-	// We never try to create NSG resource in service
-	// To accommodate that in test, we create an empty NSG resource when we get TestCloud
-	r.SecurityGroupsClient.CreateOrUpdate(
-		r.ResourceGroup,
-		r.SecurityGroupName,
-		network.SecurityGroup{
-			Name: &r.SecurityGroupName,
-		},
-		nil)
 	return r
 }
 
@@ -450,7 +442,7 @@ func getServiceSourceRanges(service *v1.Service) []string {
 	return service.Spec.LoadBalancerSourceRanges
 }
 
-func getTestSecurityGroup(services ...v1.Service) *network.SecurityGroup {
+func getTestSecurityGroup(az *Cloud, services ...v1.Service) *network.SecurityGroup {
 	rules := []network.SecurityRule{}
 
 	for _, service := range services {
@@ -470,10 +462,17 @@ func getTestSecurityGroup(services ...v1.Service) *network.SecurityGroup {
 	}
 
 	sg := network.SecurityGroup{
+		Name: &az.SecurityGroupName,
 		SecurityGroupPropertiesFormat: &network.SecurityGroupPropertiesFormat{
 			SecurityRules: &rules,
 		},
 	}
+
+	az.SecurityGroupsClient.CreateOrUpdate(
+		az.ResourceGroup,
+		az.SecurityGroupName,
+		sg,
+		nil)
 
 	return &sg
 }
