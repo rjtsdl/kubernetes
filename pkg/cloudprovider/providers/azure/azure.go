@@ -122,6 +122,13 @@ type iLoadBalancersClient interface {
 	List(resourceGroupName string) (result network.LoadBalancerListResult, err error)
 }
 
+type iPublicIPAddressesClient interface {
+	CreateOrUpdate(resourceGroupName string, publicIPAddressName string, parameters network.PublicIPAddress, cancel <-chan struct{}) (<-chan network.PublicIPAddress, <-chan error)
+	Delete(resourceGroupName string, publicIPAddressName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
+	Get(resourceGroupName string, publicIPAddressName string, expand string) (result network.PublicIPAddress, err error)
+	List(resourceGroupName string) (result network.PublicIPAddressListResult, err error)
+}
+
 // Cloud holds the config and clients
 type Cloud struct {
 	Config
@@ -131,7 +138,7 @@ type Cloud struct {
 	InterfacesClient         network.InterfacesClient
 	RouteTablesClient        network.RouteTablesClient
 	LoadBalancerClient       iLoadBalancersClient
-	PublicIPAddressesClient  network.PublicIPAddressesClient
+	PublicIPAddressesClient  iPublicIPAddressesClient
 	SecurityGroupsClient     network.SecurityGroupsClient
 	VirtualMachinesClient    compute.VirtualMachinesClient
 	StorageAccountClient     storage.AccountsClient
@@ -265,11 +272,12 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 	az.VirtualMachinesClient.PollingDelay = 5 * time.Second
 	configureUserAgent(&az.VirtualMachinesClient.Client)
 
-	az.PublicIPAddressesClient = network.NewPublicIPAddressesClient(az.SubscriptionID)
-	az.PublicIPAddressesClient.BaseURI = az.Environment.ResourceManagerEndpoint
-	az.PublicIPAddressesClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
-	az.PublicIPAddressesClient.PollingDelay = 5 * time.Second
-	configureUserAgent(&az.PublicIPAddressesClient.Client)
+	publicIPAddressClient := network.NewPublicIPAddressesClient(az.SubscriptionID)
+	publicIPAddressClient.BaseURI = az.Environment.ResourceManagerEndpoint
+	publicIPAddressClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+	publicIPAddressClient.PollingDelay = 5 * time.Second
+	configureUserAgent(&publicIPAddressClient.Client)
+	az.PublicIPAddressesClient = publicIPAddressClient
 
 	az.SecurityGroupsClient = network.NewSecurityGroupsClient(az.SubscriptionID)
 	az.SecurityGroupsClient.BaseURI = az.Environment.ResourceManagerEndpoint
