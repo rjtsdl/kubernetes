@@ -271,3 +271,90 @@ func (fASC fakeAzureSubnetsClient) List(resourceGroupName string, virtualNetwork
 	result.Value = &value
 	return result, nil
 }
+
+type fakeAzureNSGClient struct {
+	FakeStore map[string]map[string]network.SecurityGroup
+}
+
+func NewFakeAzureNSGClient() fakeAzureNSGClient {
+	fNSG := fakeAzureNSGClient{}
+	fNSG.FakeStore = make(map[string]map[string]network.SecurityGroup)
+	return fNSG
+}
+
+func (fNSG fakeAzureNSGClient) CreateOrUpdate(resourceGroupName string, networkSecurityGroupName string, parameters network.SecurityGroup, cancel <-chan struct{}) (<-chan network.SecurityGroup, <-chan error) {
+	resultChan := make(chan network.SecurityGroup, 1)
+	errChan := make(chan error, 1)
+	var result network.SecurityGroup
+	var err error
+	defer func() {
+		resultChan <- result
+		errChan <- err
+		close(resultChan)
+		close(errChan)
+	}()
+	if _, ok := fNSG.FakeStore[resourceGroupName]; !ok {
+		fNSG.FakeStore[resourceGroupName] = make(map[string]network.SecurityGroup)
+	}
+	fNSG.FakeStore[resourceGroupName][networkSecurityGroupName] = parameters
+	result = fNSG.FakeStore[resourceGroupName][networkSecurityGroupName]
+	err = nil
+	return resultChan, errChan
+}
+
+func (fNSG fakeAzureNSGClient) Delete(resourceGroupName string, networkSecurityGroupName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error) {
+	respChan := make(chan autorest.Response, 1)
+	errChan := make(chan error, 1)
+	var resp autorest.Response
+	var err error
+	defer func() {
+		respChan <- resp
+		errChan <- err
+		close(respChan)
+		close(errChan)
+	}()
+	if _, ok := fNSG.FakeStore[resourceGroupName]; ok {
+		if _, ok := fNSG.FakeStore[resourceGroupName][networkSecurityGroupName]; ok {
+			delete(fNSG.FakeStore[resourceGroupName], networkSecurityGroupName)
+			resp.Response = &http.Response{
+				StatusCode: http.StatusAccepted,
+			}
+			err = nil
+		}
+	}
+	resp.Response = &http.Response{
+		StatusCode: http.StatusNotFound,
+	}
+	err = autorest.DetailedError{
+		StatusCode: http.StatusNotFound,
+		Message:    "Not such NSG",
+	}
+	return respChan, errChan
+}
+
+func (fNSG fakeAzureNSGClient) Get(resourceGroupName string, networkSecurityGroupName string, expand string) (result network.SecurityGroup, err error) {
+	if _, ok := fNSG.FakeStore[resourceGroupName]; ok {
+		if entity, ok := fNSG.FakeStore[resourceGroupName][networkSecurityGroupName]; ok {
+			return entity, nil
+		}
+	}
+	return result, autorest.DetailedError{
+		StatusCode: http.StatusNotFound,
+		Message:    "Not such NSG",
+	}
+}
+
+func (fNSG fakeAzureNSGClient) List(resourceGroupName string) (result network.SecurityGroupListResult, err error) {
+	var value []network.SecurityGroup
+	if _, ok := fNSG.FakeStore[resourceGroupName]; ok {
+		for _, v := range fNSG.FakeStore[resourceGroupName] {
+			value = append(value, v)
+		}
+	}
+	result.Response.Response = &http.Response{
+		StatusCode: http.StatusOK,
+	}
+	result.NextLink = nil
+	result.Value = &value
+	return result, nil
+}
