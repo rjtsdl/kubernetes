@@ -56,6 +56,7 @@ func (fLBC fakeAzureLBClient) Delete(resourceGroupName string, loadBalancerName 
 				StatusCode: http.StatusAccepted,
 			}
 			err = nil
+			return respChan, errChan
 		}
 	}
 	resp.Response = &http.Response{
@@ -143,6 +144,7 @@ func (fAPC fakeAzurePIPClient) Delete(resourceGroupName string, publicIPAddressN
 				StatusCode: http.StatusAccepted,
 			}
 			err = nil
+			return respChan, errChan
 		}
 	}
 	resp.Response = &http.Response{
@@ -233,6 +235,7 @@ func (fASC fakeAzureSubnetsClient) Delete(resourceGroupName string, virtualNetwo
 				StatusCode: http.StatusAccepted,
 			}
 			err = nil
+			return respChan, errChan
 		}
 	}
 	resp.Response = &http.Response{
@@ -320,6 +323,7 @@ func (fNSG fakeAzureNSGClient) Delete(resourceGroupName string, networkSecurityG
 				StatusCode: http.StatusAccepted,
 			}
 			err = nil
+			return respChan, errChan
 		}
 	}
 	resp.Response = &http.Response{
