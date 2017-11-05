@@ -180,7 +180,7 @@ func (az *Cloud) EnsureLoadBalancerDeleted(clusterName string, service *v1.Servi
 		return err
 	}
 
-	if _, err := az.reconcileLoadBalancer(clusterName, service, false /* wantLb */); err != nil {
+	if _, err := az.reconcileSecurityGroup(clusterName, service, false /* wantLb */); err != nil {
 		return err
 	}
 
@@ -267,6 +267,7 @@ func (az *Cloud) ensurePublicIPDeleted(serviceName, pipName string) error {
 	if realErr != nil {
 		return nil
 	}
+	glog.V(2).Infof("ensure(%s): pip(%s) - finished", serviceName, pipName)
 	return nil
 }
 
