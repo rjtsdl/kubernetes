@@ -584,23 +584,48 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 	}
 
 	if !existsLb || dirtyLb {
-		glog.V(3).Infof("ensure(%s): lb(%s) - updating", serviceName, lbName)
-		az.operationPollRateLimiter.Accept()
-		glog.V(10).Infof("LoadBalancerClient.CreateOrUpdate(%q): start", *lb.Name)
-		respChan, errChan := az.LoadBalancerClient.CreateOrUpdate(az.ResourceGroup, *lb.Name, lb, nil)
-		resp := <-respChan
-		err := <-errChan
-		glog.V(10).Infof("LoadBalancerClient.CreateOrUpdate(%q): end", *lb.Name)
-		if az.CloudProviderBackoff && shouldRetryAPIRequest(resp.Response, err) {
-			glog.V(2).Infof("ensure(%s) backing off: lb(%s) - updating", serviceName, lbName)
-			retryErr := az.CreateOrUpdateLBWithRetry(lb)
-			if retryErr != nil {
-				glog.V(2).Infof("ensure(%s) abort backoff: lb(%s) - updating", serviceName, lbName)
-				return nil, retryErr
+		if lb.FrontendIPConfigurations == nil || len(*lb.FrontendIPConfigurations) == 0 {
+			// When FrontendIPConfigurations is empty, we need to delete the Azure LoadBalancer resource itself
+			// Because delete all FrontendIPConfigurations in LB is not supported, we have to delete the LB itself
+			glog.V(3).Infof("delete(%s): lb(%s) - deleting; no remaining frontendipconfigs", serviceName, lbName)
+
+			az.operationPollRateLimiter.Accept()
+			glog.V(10).Infof("LoadBalancerClient.Delete(%q): start", lbName)
+			respChan, errChan := az.LoadBalancerClient.Delete(az.ResourceGroup, lbName, nil)
+			resp := <-respChan
+			err := <-errChan
+			glog.V(10).Infof("LoadBalancerClient.Delete(%q): end", lbName)
+			if az.CloudProviderBackoff && shouldRetryAPIRequest(resp, err) {
+				glog.V(2).Infof("delete(%s) backing off: lb(%s) - deleting; no remaining frontendipconfigs", serviceName, lbName)
+				retryErr := az.DeleteLBWithRetry(lbName)
+				if retryErr != nil {
+					err = retryErr
+					glog.V(2).Infof("delete(%s) abort backoff: lb(%s) - deleting; no remaining frontendipconfigs", serviceName, lbName)
+				}
 			}
-		}
-		if err != nil {
-			return nil, err
+			if err != nil {
+				return nil, err
+			}
+
+		} else {
+			glog.V(3).Infof("ensure(%s): lb(%s) - updating", serviceName, lbName)
+			az.operationPollRateLimiter.Accept()
+			glog.V(10).Infof("LoadBalancerClient.CreateOrUpdate(%q): start", *lb.Name)
+			respChan, errChan := az.LoadBalancerClient.CreateOrUpdate(az.ResourceGroup, *lb.Name, lb, nil)
+			resp := <-respChan
+			err := <-errChan
+			glog.V(10).Infof("LoadBalancerClient.CreateOrUpdate(%q): end", *lb.Name)
+			if az.CloudProviderBackoff && shouldRetryAPIRequest(resp.Response, err) {
+				glog.V(2).Infof("ensure(%s) backing off: lb(%s) - updating", serviceName, lbName)
+				retryErr := az.CreateOrUpdateLBWithRetry(lb)
+				if retryErr != nil {
+					glog.V(2).Infof("ensure(%s) abort backoff: lb(%s) - updating", serviceName, lbName)
+					return nil, retryErr
+				}
+			}
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
