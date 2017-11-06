@@ -120,6 +120,25 @@ func (az *Cloud) getAzureLoadBalancer(name string) (lb network.LoadBalancer, exi
 	return lb, exists, err
 }
 
+func (az *Cloud) listLoadBalancers() (lbListResult network.LoadBalancerListResult, exists bool, err error) {
+	var realErr error
+
+	az.operationPollRateLimiter.Accept()
+	glog.V(10).Infof("LoadBalancerClient.List(%s): start", az.ResourceGroup)
+	lbListResult, err = az.LoadBalancerClient.List(az.ResourceGroup)
+	glog.V(10).Infof("LoadBalancerClient.List(%s): end", az.ResourceGroup)
+	exists, realErr = checkResourceExistsFromError(err)
+	if realErr != nil {
+		return lbListResult, false, realErr
+	}
+
+	if !exists {
+		return lbListResult, false, nil
+	}
+
+	return lbListResult, exists, err
+}
+
 func (az *Cloud) getPublicIPAddress(name string) (pip network.PublicIPAddress, exists bool, err error) {
 	var realErr error
 

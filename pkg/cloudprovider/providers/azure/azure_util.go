@@ -191,6 +191,14 @@ func getLoadBalancerName(clusterName string, isInternal bool) string {
 	return clusterName
 }
 
+func isMasterLoadBalancer(lb *network.LoadBalancer) bool {
+	return strings.HasPrefix(*lb.Name, "k8s-master")
+}
+
+func isInternalLoadBalancer(lb *network.LoadBalancer) bool {
+	return strings.HasSuffix(*lb.Name, "internal")
+}
+
 func getBackendPoolName(clusterName string) string {
 	return clusterName
 }
