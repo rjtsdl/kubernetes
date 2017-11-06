@@ -42,52 +42,19 @@ const ServiceAnnotationLoadBalancerInternalSubnet = "service.beta.kubernetes.io/
 // GetLoadBalancer returns whether the specified load balancer exists, and
 // if so, what its status is.
 func (az *Cloud) GetLoadBalancer(clusterName string, service *v1.Service) (status *v1.LoadBalancerStatus, exists bool, err error) {
-	isInternal := requiresInternalLoadBalancer(service)
-	lbName := getLoadBalancerName(clusterName, isInternal)
 	serviceName := getServiceName(service)
+	var lbIP *string
 
-	lb, existsLb, err := az.getAzureLoadBalancer(lbName)
+	_, lbIP, exists, err = az.getServiceLoadBalancer(service)
 	if err != nil {
 		return nil, false, err
 	}
-	if !existsLb {
-		glog.V(5).Infof("get(%s): lb(%s) - doesn't exist", serviceName, lbName)
+	if exists == false {
+		glog.V(5).Infof("get(%s)- IP doesn't exist in any of the lbs", serviceName)
 		return nil, false, nil
 	}
 
-	var lbIP *string
-
-	if isInternal {
-		lbFrontendIPConfigName := getFrontendIPConfigName(service, subnet(service))
-		for _, ipConfiguration := range *lb.FrontendIPConfigurations {
-			if lbFrontendIPConfigName == *ipConfiguration.Name {
-				lbIP = ipConfiguration.PrivateIPAddress
-				break
-			}
-		}
-	} else {
-		// TODO: Consider also read address from lb's FrontendIPConfigurations
-		pipName, err := az.determinePublicIPName(clusterName, service)
-		if err != nil {
-			return nil, false, err
-		}
-		pip, existsPip, err := az.getPublicIPAddress(pipName)
-		if err != nil {
-			return nil, false, err
-		}
-		if existsPip {
-			lbIP = pip.IPAddress
-		}
-	}
-
-	if lbIP == nil {
-		glog.V(5).Infof("get(%s): lb(%s) - IP doesn't exist", serviceName, lbName)
-		return nil, false, nil
-	}
-
-	return &v1.LoadBalancerStatus{
-		Ingress: []v1.LoadBalancerIngress{{IP: *lbIP}},
-	}, true, nil
+	return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: *lbIP}}}, true, nil
 }
 
 func (az *Cloud) determinePublicIPName(clusterName string, service *v1.Service) (string, error) {
@@ -190,6 +157,40 @@ func (az *Cloud) EnsureLoadBalancerDeleted(clusterName string, service *v1.Servi
 
 	glog.V(2).Infof("delete(%s): FINISH", serviceName)
 	return nil
+}
+
+func (az *Cloud) getServiceLoadBalancer(service *v1.Service) (lb *network.LoadBalancer, lbIP *string, exists bool, err error) {
+	lbListResult, existsLb, err := az.listLoadBalancers()
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if !existsLb {
+		glog.V(5).Infof("listLoadBalancers- doesn't exist in resource group (%s)", az.resourceGroup)
+		return nil, nil, false, nil
+	}
+	isInternal := requiresInternalLoadBalancer(service)
+	lbFrontendIPConfigName := getFrontendIPConfigName(service, subnet(service))
+	for lbx := range *lbListResult.Value {
+		lb := &(*lbListResult.Value)[lbx]
+		if isMasterLoadBalancer(lb) {
+			continue
+		}
+		if isInternalLoadBalancer(lb) != isInternal {
+			continue
+		}
+		for _, ipConfiguration := range *lb.FrontendIPConfigurations {
+			if lbFrontendIPConfigName == *ipConfiguration.Name {
+				if isInternal {
+					lbIP = ipConfiguration.PrivateIPAddress
+				} else {
+					lbIP = ipConfiguration.PublicIPAddress.IPAddress
+				}
+				return lb, lbIP, true, nil
+			}
+		}
+	}
+
+	return nil, nil, false, nil
 }
 
 func flipServiceInternalAnnotation(service *v1.Service) *v1.Service {
