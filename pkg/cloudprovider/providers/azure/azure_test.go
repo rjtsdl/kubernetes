@@ -173,7 +173,6 @@ func TestReconcileLoadBalancerRemoveService(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
-	validateLoadBalancer(t, lb, svc)
 
 	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, nil, false /* wantLb */)
 	if err != nil {
