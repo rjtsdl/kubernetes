@@ -340,7 +340,7 @@ func getTestCloud() *Cloud {
 	}
 	r.operationPollRateLimiter = flowcontrol.NewTokenBucketRateLimiter(100, 100)
 	r.LoadBalancerClient = NewFakeAzureLBClient()
-	r.PublicIPAddressesClient = NewFakeAzurePIPClient()
+	r.PublicIPAddressesClient = NewFakeAzurePIPClient(r.Config.SubscriptionID)
 	r.SubnetsClient = NewFakeAzureSubnetsClient()
 	r.SecurityGroupsClient = NewFakeAzureNSGClient()
 	return r

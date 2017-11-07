@@ -44,6 +44,9 @@ const (
 	loadBalancerRuleIDTemplate  = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/loadBalancers/%s/loadBalancingRules/%s"
 	loadBalancerProbeIDTemplate = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/loadBalancers/%s/probes/%s"
 	securityRuleIDTemplate      = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/networkSecurityGroups/%s/securityRules/%s"
+
+	// InternalLoadBalancerNamePostfix is load balancer posfix
+	InternalLoadBalancerNamePostfix = "-internal"
 )
 
 var providerIDRE = regexp.MustCompile(`^` + CloudProviderName + `://(?:.*)/Microsoft.Compute/virtualMachines/(.+)$`)
@@ -116,6 +119,48 @@ func (az *Cloud) getSecurityRuleID(securityRuleName string) string {
 		securityRuleName)
 }
 
+// returns the full identifier of a publicIPAddress.
+func (az *Cloud) getpublicIPAddressID(pipName string) string {
+	return fmt.Sprintf(
+		publicIPAddressIDTemplate,
+		az.SubscriptionID,
+		az.ResourceGroup,
+		pipName)
+}
+
+// select load balancer name for the service in the cluster
+func (az *Cloud) selectLoadBalancerName(clusterName string, service *v1.Service) (lbName string, err error) {
+	availabilitySetName := az.selectLoadBalancerAvailabilitySet(service)
+	if err != nil {
+		return "", err
+	}
+	isInternal := requiresInternalLoadBalancer(service)
+	lbName = az.getLoadBalancerName(clusterName, availabilitySetName, isInternal)
+
+	return lbName, nil
+}
+
+// selectLoadBalancerAvailabilitySet selects the availability set for the load balancer
+func (az *Cloud) selectLoadBalancerAvailabilitySet(service *v1.Service) string {
+	// legacy load balancer auto mode load balancer.
+	return az.Config.PrimaryAvailabilitySetName
+}
+
+// For a load balancer, all frontend ip should reference either a subnet or publicIpAddress.
+// Thus Azure do not allow mixed type (public and internal) load balancer.
+// So we'd have a separate name for internal load balancer.
+// This would be the name for Azure LoadBalancer resource.
+func (az *Cloud) getLoadBalancerName(clusterName string, availabilitySetName string, isInternal bool) string {
+	lbNamePrefix := availabilitySetName
+	if strings.EqualFold(availabilitySetName, az.Config.PrimaryAvailabilitySetName) {
+		lbNamePrefix = clusterName
+	}
+	if isInternal {
+		return fmt.Sprintf("%s%s", lbNamePrefix, InternalLoadBalancerNamePostfix)
+	}
+	return lbNamePrefix
+}
+
 // returns the deepest child's identifier from a full identifier string.
 func getLastSegment(ID string) (string, error) {
 	parts := strings.Split(ID, "/")
@@ -177,18 +222,6 @@ func getPrimaryIPConfig(nic network.Interface) (*network.InterfaceIPConfiguratio
 	}
 
 	return nil, fmt.Errorf("failed to determine the determine primary ipconfig. nicname=%q", *nic.Name)
-}
-
-// For a load balancer, all frontend ip should reference either a subnet or publicIpAddress.
-// Thus Azure do not allow mixed type (public and internal) load balancer.
-// So we'd have a separate name for internal load balancer.
-// This would be the name for Azure LoadBalancer resource.
-func getLoadBalancerName(clusterName string, isInternal bool) string {
-	if isInternal {
-		return fmt.Sprintf("%s-internal", clusterName)
-	}
-
-	return clusterName
 }
 
 func isMasterLoadBalancer(lb *network.LoadBalancer) bool {

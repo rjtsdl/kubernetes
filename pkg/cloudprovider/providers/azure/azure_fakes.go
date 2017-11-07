@@ -1,8 +1,11 @@
 package azure
 
 import (
+	"fmt"
+	"math/rand"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/Azure/go-autorest/autorest"
@@ -97,12 +100,25 @@ func (fLBC fakeAzureLBClient) List(resourceGroupName string) (result network.Loa
 }
 
 type fakeAzurePIPClient struct {
-	FakeStore map[string]map[string]network.PublicIPAddress
+	FakeStore      map[string]map[string]network.PublicIPAddress
+	SubscriptionID string
 }
 
-func NewFakeAzurePIPClient() fakeAzurePIPClient {
+const publicIPAddressIDTemplate = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/publicIPAddresses/%s"
+
+// returns the full identifier of a publicIPAddress.
+func getpublicIPAddressID(subscriptionID string, resourceGroupName, pipName string) string {
+	return fmt.Sprintf(
+		publicIPAddressIDTemplate,
+		subscriptionID,
+		resourceGroupName,
+		pipName)
+}
+
+func NewFakeAzurePIPClient(subscriptionID string) fakeAzurePIPClient {
 	fAPC := fakeAzurePIPClient{}
 	fAPC.FakeStore = make(map[string]map[string]network.PublicIPAddress)
+	fAPC.SubscriptionID = subscriptionID
 	return fAPC
 }
 
@@ -120,6 +136,16 @@ func (fAPC fakeAzurePIPClient) CreateOrUpdate(resourceGroupName string, publicIP
 	if _, ok := fAPC.FakeStore[resourceGroupName]; !ok {
 		fAPC.FakeStore[resourceGroupName] = make(map[string]network.PublicIPAddress)
 	}
+
+	// assign id
+	pipID := getpublicIPAddressID(fAPC.SubscriptionID, resourceGroupName, publicIPAddressName)
+	parameters.ID = &pipID
+
+	// assign ip
+	rand.Seed(time.Now().UnixNano())
+	randomIP := fmt.Sprintf("%d.%d.%d.%d", rand.Intn(256), rand.Intn(256), rand.Intn(256), rand.Intn(256))
+	parameters.IPAddress = &randomIP
+
 	fAPC.FakeStore[resourceGroupName][publicIPAddressName] = parameters
 	result = fAPC.FakeStore[resourceGroupName][publicIPAddressName]
 	err = nil
