@@ -91,7 +91,7 @@ func (az *Cloud) EnsureLoadBalancer(clusterName string, service *v1.Service, nod
 	// the service may be switched from an internal LB to a public one, or vise versa.
 	// Here we'll firstly ensure service do not lie in the opposite LB.
 	flipedService := flipServiceInternalAnnotation(service)
-	if _, err := az.reconcileLoadBalancer(clusterName, flipedService, false /* wantLb */); err != nil {
+	if _, err := az.reconcileLoadBalancer(clusterName, flipedService, nil, false /* wantLb */); err != nil {
 		return nil, err
 	}
 
@@ -103,11 +103,7 @@ func (az *Cloud) EnsureLoadBalancer(clusterName string, service *v1.Service, nod
 		return nil, err
 	}
 
-	if _, err := az.reconcileLoadBalancer(clusterName, service, true /* wantLb */); err != nil {
-		return nil, err
-	}
-
-	if err := az.reconcileBackEndPoolOfLB(clusterName, service, nodes /* wantLb */); err != nil {
+	if _, err := az.reconcileLoadBalancer(clusterName, service, nodes, true /* wantLb */); err != nil {
 		return nil, err
 	}
 
@@ -143,7 +139,7 @@ func (az *Cloud) EnsureLoadBalancerDeleted(clusterName string, service *v1.Servi
 
 	glog.V(5).Infof("delete(%s): START clusterName=%q lbName=%q", serviceName, clusterName, lbName)
 
-	if _, err := az.reconcileLoadBalancer(clusterName, service, false /* wantLb */); err != nil {
+	if _, err := az.reconcileLoadBalancer(clusterName, service, nil, false /* wantLb */); err != nil {
 		return err
 	}
 
@@ -275,10 +271,13 @@ func (az *Cloud) ensurePublicIPDeleted(serviceName, pipName string) error {
 // This ensures load balancer exists and the frontend ip config is setup.
 // This also reconciles the Service's Ports  with the LoadBalancer config.
 // This entails adding rules/probes for expected Ports and removing stale rules/ports.
-func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, wantLb bool) (*network.LoadBalancer, error) {
+// nodes only used if wantLB is true
+func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, nodes []*v1.Node, wantLb bool) (*network.LoadBalancer, error) {
 	isInternal := requiresInternalLoadBalancer(service)
 	lbName := getLoadBalancerName(clusterName, isInternal)
 	serviceName := getServiceName(service)
+	glog.V(2).Infof("ensure(%s): lb(%s) started", serviceName, lbName)
+
 	lb, existsLb, err := az.getAzureLoadBalancer(lbName)
 	if err != nil {
 		return nil, err
@@ -633,35 +632,29 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 		}
 	}
 
+	if wantLb && nodes != nil {
+		// Add the machines to the backend pool if they're not already
+		hostUpdates := make([]func() error, len(nodes))
+		for i, node := range nodes {
+			localNodeName := node.Name
+			f := func() error {
+				err := az.ensureHostInPool(serviceName, types.NodeName(localNodeName), lbBackendPoolID)
+				if err != nil {
+					return fmt.Errorf("ensure(%s): lb(%s) - failed to ensure host in pool: %q", serviceName, lbName, err)
+				}
+				return nil
+			}
+			hostUpdates[i] = f
+		}
+
+		errs := utilerrors.AggregateGoroutines(hostUpdates...)
+		if errs != nil {
+			return nil, utilerrors.Flatten(errs)
+		}
+	}
+
 	glog.V(2).Infof("ensure(%s): lb(%s) finished", serviceName, lbName)
 	return &lb, nil
-}
-
-// Add the machines to the backend pool if they're not already
-func (az *Cloud) reconcileBackEndPoolOfLB(clusterName string, service *v1.Service, nodes []*v1.Node) error {
-	isInternal := requiresInternalLoadBalancer(service)
-	lbName := getLoadBalancerName(clusterName, isInternal)
-	serviceName := getServiceName(service)
-	lbBackendPoolName := getBackendPoolName(clusterName)
-	lbBackendPoolID := az.getBackendPoolID(lbName, lbBackendPoolName)
-	hostUpdates := make([]func() error, len(nodes))
-	for i, node := range nodes {
-		localNodeName := node.Name
-		f := func() error {
-			err := az.ensureHostInPool(serviceName, types.NodeName(localNodeName), lbBackendPoolID)
-			if err != nil {
-				return fmt.Errorf("ensure(%s): lb(%s) - failed to ensure host in pool: %q", serviceName, lbName, err)
-			}
-			return nil
-		}
-		hostUpdates[i] = f
-	}
-
-	errs := utilerrors.AggregateGoroutines(hostUpdates...)
-	if errs != nil {
-		return utilerrors.Flatten(errs)
-	}
-	return nil
 }
 
 // This reconciles the Network Security Group similar to how the LB is reconciled.
