@@ -48,7 +48,7 @@ func TestAddPort(t *testing.T) {
 		NodePort: getBackendPort(1234),
 	})
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -67,7 +67,7 @@ func TestReconcileLoadBalancerAddServiceOnInternalSubnet(t *testing.T) {
 	svc := getInternalTestService("servicea", 80)
 	addTestSubnet(t, az, &svc)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -90,7 +90,7 @@ func TestReconcileLoadBalancerAddServicesOnMultipleSubnets(t *testing.T) {
 	addTestSubnet(t, az, &svc2)
 
 	// svc1 is using LB without "-internal" suffix
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc1, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc1, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling svc1: %q", err)
 	}
@@ -103,7 +103,7 @@ func TestReconcileLoadBalancerAddServicesOnMultipleSubnets(t *testing.T) {
 	validateLoadBalancer(t, lb, svc1)
 
 	// svc2 is using LB with "-internal" suffix
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svc2, true /* wantLb */)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svc2, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling svc2: %q", err)
 	}
@@ -122,7 +122,7 @@ func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	svc := getInternalTestService("service1", 8081)
 	addTestSubnet(t, az, &svc)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling initial svc: %q", err)
 	}
@@ -132,7 +132,7 @@ func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	svc.Annotations[ServiceAnnotationLoadBalancerInternalSubnet] = "NewSubnet"
 	addTestSubnet(t, az, &svc)
 
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling edits to svc: %q", err)
 	}
@@ -151,7 +151,7 @@ func TestReconcileLoadBalancerNodeHealth(t *testing.T) {
 	svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
 	svc.Spec.HealthCheckNodePort = int32(32456)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -169,13 +169,13 @@ func TestReconcileLoadBalancerRemoveService(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 	validateLoadBalancer(t, lb, svc)
 
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, false /* wantLb */)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, nil, false /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -193,14 +193,14 @@ func TestReconcileLoadBalancerRemoveAllPortsRemovesFrontendConfig(t *testing.T) 
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 	validateLoadBalancer(t, lb, svc)
 
 	svcUpdated := getTestService("servicea", v1.ProtocolTCP)
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, false /* wantLb*/)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, nil, false /* wantLb*/)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -217,13 +217,13 @@ func TestReconcileLoadBalancerRemoveAllPortsRemovesFrontendConfig(t *testing.T) 
 func TestReconcileLoadBalancerRemovesPort(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 
 	svcUpdated := getTestService("servicea", v1.ProtocolTCP, 80)
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, true /* wantLb */)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -237,12 +237,12 @@ func TestReconcileLoadBalancerMultipleServices(t *testing.T) {
 	svc1 := getTestService("servicea", v1.ProtocolTCP, 80, 443)
 	svc2 := getTestService("serviceb", v1.ProtocolTCP, 80)
 
-	updatedLoadBalancer, err := az.reconcileLoadBalancer(testClusterName, &svc1, true /* wantLb */)
+	updatedLoadBalancer, err := az.reconcileLoadBalancer(testClusterName, &svc1, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 
-	updatedLoadBalancer, err = az.reconcileLoadBalancer(testClusterName, &svc2, true /* wantLb */)
+	updatedLoadBalancer, err = az.reconcileLoadBalancer(testClusterName, &svc2, nil, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
