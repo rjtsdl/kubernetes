@@ -584,7 +584,10 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 		lb.LoadBalancingRules = &updatedRules
 	}
 
-	if !existsLb || dirtyLb {
+	// We don't care if the LB exists or not
+	// We only care about if there is any change in the LB, which means dirtyLB
+	// If it is not exist, and no change to that, we don't CreateOrUpdate LB
+	if dirtyLb {
 		if lb.FrontendIPConfigurations == nil || len(*lb.FrontendIPConfigurations) == 0 {
 			// When FrontendIPConfigurations is empty, we need to delete the Azure LoadBalancer resource itself
 			// Because delete all FrontendIPConfigurations in LB is not supported, we have to delete the LB itself
