@@ -255,6 +255,13 @@ func TestReconcileSecurityGroupNewServiceAddsPort(t *testing.T) {
 	getTestSecurityGroup(az)
 	svc1 := getTestService("serviceea", v1.ProtocolTCP, 80)
 
+	// reconcileSecurityGroup need the lb there
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc1, nil, true /* wantLb */)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+	validateLoadBalancer(t, lb, svc1)
+
 	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
