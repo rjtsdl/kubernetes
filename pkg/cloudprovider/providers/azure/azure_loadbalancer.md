@@ -8,19 +8,15 @@ And also, For Azure, we cannot afford to have more than 1 worker of service_cont
 ## Introduce Functions
 
   - reconcileLoadBalancer(lb network.LoadBalancer, clusterName string, service *v1.Service, nodes []*v1.Node, wantLB bool) (network.LoadBalancer, error)
-    - if wantLB, ensure the Azure LB resource is there
-    - if wantLB || LB exists
-      - Go through lb's properties, update based on wantLB
-      - Call az cloud to CreateOrUpdate on this lb
-      - Never intentionally delete the Azure LB resource itself
+    - Go through lb's properties, update based on wantLB
+    - If any change on the lb, no matter if the lb exists or not
+      - Call az cloud to CreateOrUpdate on this lb, or Delete if nothing left
     - return lb, err
 
   - reconcileSecurityGroup(sg network.SecurityGroup, clusterName string, service *v1.Service, wantLb bool) (network.SecurityGroup, error)
-    - if wantLB, ensure Azure NSG resource is there
-    - if wantLB || NSG exists
-      - Go though NSG' properties, update based on wantLB
+    - Go though NSG' properties, update based on wantLB
+    - If any change on the NSG, (the NSG should always exists)
       - Call az cloud to CreateOrUpdate on this NSG
-      - Never intentionally delete the Azure NSG resource itself
     - return sg, err
 
   - reconcilePublicIP(pipName string, clusterName string, service *v1.Service, wantLB bool) (error)
@@ -47,8 +43,9 @@ And also, For Azure, we cannot afford to have more than 1 worker of service_cont
   - Has no difference with EnsureLoadBalancer
 
 ### EnsureLoadBalancerDeleted
+  - Reconcile NSG first, before reconcile LB, because SG need LB to be there
+    - Call reconcileSecurityGroup(sg, clusterName, service, false)
   - Reconcile LB's related and owned resources, such as FrontEndIPConfig, Rules, Probe.
     - Call reconcileLoadBalancer(lb, clusterName, service, nodes, false)
-  - Reconcile LB's related but not owned resources, such as Public IP, NSG rules
-    - Call reconcileSecurityGroup(sg, clusterName, service, false)
+  - Reconcile LB's related but not owned resources, such as Public IP
     - Call reconcilePublicIP(pipName, cluster, service, false)
