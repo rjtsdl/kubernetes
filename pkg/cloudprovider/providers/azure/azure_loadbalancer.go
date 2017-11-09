@@ -139,11 +139,11 @@ func (az *Cloud) EnsureLoadBalancerDeleted(clusterName string, service *v1.Servi
 
 	glog.V(5).Infof("delete(%s): START clusterName=%q lbName=%q", serviceName, clusterName, lbName)
 
-	if _, err := az.reconcileLoadBalancer(clusterName, service, nil, false /* wantLb */); err != nil {
+	if _, err := az.reconcileSecurityGroup(clusterName, service, false /* wantLb */); err != nil {
 		return err
 	}
 
-	if _, err := az.reconcileSecurityGroup(clusterName, service, false /* wantLb */); err != nil {
+	if _, err := az.reconcileLoadBalancer(clusterName, service, nil, false /* wantLb */); err != nil {
 		return err
 	}
 
