@@ -113,6 +113,21 @@ type Config struct {
 
 	// Use managed service identity for the virtual machine to access Azure ARM APIs
 	UseManagedIdentityExtension bool `json:"useManagedIdentityExtension"`
+
+	// Maximum allowed LoadBalancer Rule Count is the limit enforced by Azure Load balancer
+	MaximumAllowedLoadBalancerRuleCount int `json:"maximumAllowedLoadBalancerRuleCount"`
+}
+
+type iVirtualMachinesClient interface {
+	CreateOrUpdate(resourceGroupName string, VMName string, parameters compute.VirtualMachine, cancel <-chan struct{}) (<-chan compute.VirtualMachine, <-chan error)
+	Get(resourceGroupName string, VMName string, expand compute.InstanceViewTypes) (result compute.VirtualMachine, err error)
+	List(resourceGroupName string) (result compute.VirtualMachineListResult, err error)
+	ListAllNextResults(lastResults compute.VirtualMachineListResult) (result compute.VirtualMachineListResult, err error)
+}
+
+type iInterfacesClient interface {
+	CreateOrUpdate(resourceGroupName string, networkInterfaceName string, parameters network.Interface, cancel <-chan struct{}) (<-chan network.Interface, <-chan error)
+	Get(resourceGroupName string, networkInterfaceName string, expand string) (result network.Interface, err error)
 }
 
 type iLoadBalancersClient interface {
@@ -149,12 +164,12 @@ type Cloud struct {
 	Environment              azure.Environment
 	RoutesClient             network.RoutesClient
 	SubnetsClient            iSubnetsClient
-	InterfacesClient         network.InterfacesClient
+	InterfacesClient         iInterfacesClient
 	RouteTablesClient        network.RouteTablesClient
 	LoadBalancerClient       iLoadBalancersClient
 	PublicIPAddressesClient  iPublicIPAddressesClient
 	SecurityGroupsClient     iSecurityGroupsClient
-	VirtualMachinesClient    compute.VirtualMachinesClient
+	VirtualMachinesClient    iVirtualMachinesClient
 	StorageAccountClient     storage.AccountsClient
 	DisksClient              disk.DisksClient
 	operationPollRateLimiter flowcontrol.RateLimiter
@@ -268,11 +283,12 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 	az.RoutesClient.PollingDelay = 5 * time.Second
 	configureUserAgent(&az.RoutesClient.Client)
 
-	az.InterfacesClient = network.NewInterfacesClient(az.SubscriptionID)
-	az.InterfacesClient.BaseURI = az.Environment.ResourceManagerEndpoint
-	az.InterfacesClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
-	az.InterfacesClient.PollingDelay = 5 * time.Second
-	configureUserAgent(&az.InterfacesClient.Client)
+	interfacesClient := network.NewInterfacesClient(az.SubscriptionID)
+	interfacesClient.BaseURI = az.Environment.ResourceManagerEndpoint
+	interfacesClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+	interfacesClient.PollingDelay = 5 * time.Second
+	configureUserAgent(&interfacesClient.Client)
+	az.InterfacesClient = interfacesClient
 
 	loadBalancerClient := network.NewLoadBalancersClient(az.SubscriptionID)
 	loadBalancerClient.BaseURI = az.Environment.ResourceManagerEndpoint
@@ -281,11 +297,12 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 	configureUserAgent(&loadBalancerClient.Client)
 	az.LoadBalancerClient = loadBalancerClient
 
-	az.VirtualMachinesClient = compute.NewVirtualMachinesClient(az.SubscriptionID)
-	az.VirtualMachinesClient.BaseURI = az.Environment.ResourceManagerEndpoint
-	az.VirtualMachinesClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
-	az.VirtualMachinesClient.PollingDelay = 5 * time.Second
-	configureUserAgent(&az.VirtualMachinesClient.Client)
+	virtualMachinesClient := compute.NewVirtualMachinesClient(az.SubscriptionID)
+	virtualMachinesClient.BaseURI = az.Environment.ResourceManagerEndpoint
+	virtualMachinesClient.Authorizer = autorest.NewBearerAuthorizer(servicePrincipalToken)
+	virtualMachinesClient.PollingDelay = 5 * time.Second
+	configureUserAgent(&virtualMachinesClient.Client)
+	az.VirtualMachinesClient = virtualMachinesClient
 
 	publicIPAddressClient := network.NewPublicIPAddressesClient(az.SubscriptionID)
 	publicIPAddressClient.BaseURI = az.Environment.ResourceManagerEndpoint
