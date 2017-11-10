@@ -68,17 +68,71 @@ func TestAddPort(t *testing.T) {
 }
 
 func TestLoadBalancerInternalServiceModeSelection(t *testing.T) {
+	testLoadBalancerServiceDefaultModeSelection(t, true)
 	testLoadBalancerServiceAutoModeSelection(t, true)
 	testLoadBalancerServicesSpecifiedSelection(t, true)
 	testLoadBalancerMaxRulesServices(t, true)
 	testLoadBalancerServiceAutoModeDeleteSelection(t, true)
+
 }
 
 func TestLoadBalancerExternalServiceModeSelection(t *testing.T) {
+	testLoadBalancerServiceDefaultModeSelection(t, false)
 	testLoadBalancerServiceAutoModeSelection(t, false)
 	testLoadBalancerServicesSpecifiedSelection(t, false)
 	testLoadBalancerMaxRulesServices(t, false)
 	testLoadBalancerServiceAutoModeDeleteSelection(t, false)
+}
+
+func testLoadBalancerServiceDefaultModeSelection(t *testing.T, isInternal bool) {
+	az := getTestCloud()
+	const vmCount = 8
+	const availabilitySetCount = 4
+	const serviceCount = 9
+
+	clusterResources := getClusterResources(az, vmCount, availabilitySetCount)
+	getTestSecurityGroup(az)
+
+	for index := 1; index <= serviceCount; index++ {
+		svcName := fmt.Sprintf("service-%d", index)
+		var svc v1.Service
+		if isInternal {
+			svc = getInternalTestService(az, svcName, 8081)
+			addTestSubnet(t, az, &svc)
+		} else {
+			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
+		}
+
+		lbStatus, err := az.EnsureLoadBalancer(testClusterName, &svc, clusterResources.nodes)
+		if err != nil {
+			t.Errorf("Unexpected error: %q", err)
+		}
+		if lbStatus == nil {
+			t.Errorf("Unexpected error: %s", svcName)
+		}
+
+		expectedLBName := testClusterName
+		if isInternal {
+			expectedLBName = testClusterName + "-internal"
+		}
+
+		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
+		lb := (*result.Value)[0]
+		lbCount := len(*result.Value)
+		expectedNumOfLB := 1
+		if lbCount != expectedNumOfLB {
+			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
+		}
+
+		if !strings.EqualFold(*lb.Name, expectedLBName) {
+			t.Errorf("lb name should be the default LB name Extected (%s) Fouund (%s)", expectedLBName, *lb.Name)
+		}
+
+		ruleCount := len(*lb.LoadBalancingRules)
+		if ruleCount != index {
+			t.Errorf("lb rule could should be equal to nuber of services deployed, expected (%d) Found (%d)", index, ruleCount)
+		}
+	}
 }
 
 // Validate even distribution of external services across load balances
