@@ -153,12 +153,11 @@ func (a *GenericAdmissionWebhook) SetScheme(scheme *runtime.Scheme) {
 
 // WantsExternalKubeClientSet defines a function which sets external ClientSet for admission plugins that need it
 func (a *GenericAdmissionWebhook) SetExternalKubeClientSet(client clientset.Interface) {
-	a.hookSource = configuration.NewExternalAdmissionHookConfigurationManager(client.Admissionregistration().ExternalAdmissionHookConfigurations())
+	a.hookSource = configuration.NewExternalAdmissionHookConfigurationManager(client.AdmissionregistrationV1alpha1().ExternalAdmissionHookConfigurations())
 }
 
-// Validator holds Validate functions, which are responsible for validation of initialized shared resources
-// and should be implemented on admission plugins
-func (a *GenericAdmissionWebhook) Validate() error {
+// ValidateInitialization implements the InitializationValidator interface.
+func (a *GenericAdmissionWebhook) ValidateInitialization() error {
 	if a.hookSource == nil {
 		return fmt.Errorf("the GenericAdmissionWebhook admission plugin requires a Kubernetes client to be provided")
 	}
@@ -219,11 +218,11 @@ func (a *GenericAdmissionWebhook) Admit(attr admission.Attributes) error {
 				}
 
 				glog.Warningf("Failed calling webhook, failing closed %v: %v", hook.Name, err)
-				errCh <- err
+				errCh <- apierrors.NewInternalError(err)
 				return
 			}
 
-			glog.Warningf("rejected by webhook %v %t: %v", hook.Name, err, err)
+			glog.Warningf("rejected by webhook %q: %#v", hook.Name, err)
 			errCh <- err
 		}(&hooks[i])
 	}
@@ -274,12 +273,29 @@ func (a *GenericAdmissionWebhook) callHook(ctx context.Context, h *v1alpha1.Exte
 		return nil
 	}
 
-	if response.Status.Result == nil {
-		return fmt.Errorf("admission webhook %q denied the request without explanation", h.Name)
+	return toStatusErr(h.Name, response.Status.Result)
+}
+
+// toStatusErr returns a StatusError with information about the webhook controller
+func toStatusErr(name string, result *metav1.Status) *apierrors.StatusError {
+	deniedBy := fmt.Sprintf("admission webhook %q denied the request", name)
+	const noExp = "without explanation"
+
+	if result == nil {
+		result = &metav1.Status{Status: metav1.StatusFailure}
+	}
+
+	switch {
+	case len(result.Message) > 0:
+		result.Message = fmt.Sprintf("%s: %s", deniedBy, result.Message)
+	case len(result.Reason) > 0:
+		result.Message = fmt.Sprintf("%s: %s", deniedBy, result.Reason)
+	default:
+		result.Message = fmt.Sprintf("%s %s", deniedBy, noExp)
 	}
 
 	return &apierrors.StatusError{
-		ErrStatus: *response.Status.Result,
+		ErrStatus: *result,
 	}
 }
 

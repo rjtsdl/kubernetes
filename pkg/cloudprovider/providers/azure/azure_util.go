@@ -225,15 +225,6 @@ func (az *Cloud) getLoadBalancerAvailabilitySetNames(service *v1.Service, nodes 
 	return availabilitySetNames, nil
 }
 
-func (az *Cloud) mapLoadBalancerNameToAvailabilitySet(lbName string, clusterName string) (availabilitySetName string) {
-	availabilitySetName = strings.TrimSuffix(lbName, InternalLoadBalancerNameSuffix)
-	if strings.EqualFold(clusterName, lbName) {
-		availabilitySetName = az.Config.PrimaryAvailabilitySetName
-	}
-
-	return availabilitySetName
-}
-
 // lists the virtual machines for for the resource group and then builds
 // a list of availability sets that match the nodes available to k8s
 func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]string, err error) {
@@ -273,6 +264,15 @@ func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]s
 	}
 
 	return agentPoolAs, nil
+}
+
+func (az *Cloud) mapLoadBalancerNameToAvailabilitySet(lbName string, clusterName string) (availabilitySetName string) {
+	availabilitySetName = strings.TrimSuffix(lbName, InternalLoadBalancerNameSuffix)
+	if strings.EqualFold(clusterName, lbName) {
+		availabilitySetName = az.Config.PrimaryAvailabilitySetName
+	}
+
+	return availabilitySetName
 }
 
 // For a load balancer, all frontend ip should reference either a subnet or publicIpAddress.

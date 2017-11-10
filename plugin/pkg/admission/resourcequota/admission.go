@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/kubernetes/pkg/api"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	informers "k8s.io/kubernetes/pkg/client/informers/informers_generated/internalversion"
 	kubeapiserveradmission "k8s.io/kubernetes/pkg/kubeapiserver/admission"
@@ -61,6 +61,7 @@ type QuotaAdmission struct {
 	evaluator          Evaluator
 }
 
+var _ admission.ValidationInterface = &QuotaAdmission{}
 var _ = kubeapiserveradmission.WantsInternalKubeClientSet(&QuotaAdmission{})
 var _ = kubeapiserveradmission.WantsQuotaConfiguration(&QuotaAdmission{})
 
@@ -100,8 +101,8 @@ func (a *QuotaAdmission) SetQuotaConfiguration(c quota.Configuration) {
 	a.evaluator = NewQuotaEvaluator(a.quotaAccessor, a.quotaConfiguration, nil, a.config, a.numEvaluators, a.stopCh)
 }
 
-// Validate ensures an authorizer is set.
-func (a *QuotaAdmission) Validate() error {
+// ValidateInitialization ensures an authorizer is set.
+func (a *QuotaAdmission) ValidateInitialization() error {
 	if a.quotaAccessor == nil {
 		return fmt.Errorf("missing quotaAccessor")
 	}
@@ -120,8 +121,8 @@ func (a *QuotaAdmission) Validate() error {
 	return nil
 }
 
-// Admit makes admission decisions while enforcing quota
-func (a *QuotaAdmission) Admit(attr admission.Attributes) (err error) {
+// Validate makes admission decisions while enforcing quota
+func (a *QuotaAdmission) Validate(attr admission.Attributes) (err error) {
 	// ignore all operations that correspond to sub-resource actions
 	if attr.GetSubresource() != "" {
 		return nil

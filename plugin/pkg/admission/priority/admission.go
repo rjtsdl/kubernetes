@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apiserver/pkg/admission"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/kubernetes/pkg/api"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/scheduling"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	informers "k8s.io/kubernetes/pkg/client/informers/informers_generated/internalversion"
@@ -64,6 +64,8 @@ type PriorityPlugin struct {
 	globalDefaultPriority *int32
 }
 
+var _ admission.MutationInterface = &PriorityPlugin{}
+var _ admission.ValidationInterface = &PriorityPlugin{}
 var _ = kubeapiserveradmission.WantsInternalKubeInformerFactory(&PriorityPlugin{})
 var _ = kubeapiserveradmission.WantsInternalKubeClientSet(&PriorityPlugin{})
 
@@ -74,8 +76,8 @@ func NewPlugin() *PriorityPlugin {
 	}
 }
 
-// Validate implements the Validator interface.
-func (p *PriorityPlugin) Validate() error {
+// ValidateInitialization implements the InitializationValidator interface.
+func (p *PriorityPlugin) ValidateInitialization() error {
 	if p.client == nil {
 		return fmt.Errorf("%s requires a client", pluginName)
 	}
@@ -102,11 +104,10 @@ var (
 	priorityClassResource = scheduling.Resource("priorityclasses")
 )
 
-// Admit checks Pods and PriorityClasses and admits or rejects them. It also resolves the priority of pods based on their PriorityClass.
+// Admit checks Pods and admits or rejects them. It also resolves the priority of pods based on their PriorityClass.
 func (p *PriorityPlugin) Admit(a admission.Attributes) error {
 	operation := a.GetOperation()
-	// Ignore all calls to subresources or resources other than pods.
-	// Ignore all operations other than Create and Update.
+	// Ignore all calls to subresources
 	if len(a.GetSubresource()) != 0 {
 		return nil
 	}
@@ -118,9 +119,23 @@ func (p *PriorityPlugin) Admit(a admission.Attributes) error {
 		}
 		return nil
 
+	default:
+		return nil
+	}
+}
+
+// Validate checks PriorityClasses and admits or rejects them.
+func (p *PriorityPlugin) Validate(a admission.Attributes) error {
+	operation := a.GetOperation()
+	// Ignore all calls to subresources
+	if len(a.GetSubresource()) != 0 {
+		return nil
+	}
+
+	switch a.GetResource().GroupResource() {
 	case priorityClassResource:
 		if operation == admission.Create || operation == admission.Update {
-			return p.admitPriorityClass(a)
+			return p.validatePriorityClass(a)
 		}
 		if operation == admission.Delete {
 			p.invalidateCachedDefaultPriority()
@@ -176,8 +191,8 @@ func (p *PriorityPlugin) admitPod(a admission.Attributes) error {
 	return nil
 }
 
-// admitPriorityClass ensures that the value field is not larger than the highest user definable priority. If the GlobalDefault is set, it ensures that there is no other PriorityClass whose GlobalDefault is set.
-func (p *PriorityPlugin) admitPriorityClass(a admission.Attributes) error {
+// validatePriorityClass ensures that the value field is not larger than the highest user definable priority. If the GlobalDefault is set, it ensures that there is no other PriorityClass whose GlobalDefault is set.
+func (p *PriorityPlugin) validatePriorityClass(a admission.Attributes) error {
 	operation := a.GetOperation()
 	pc, ok := a.GetObject().(*scheduling.PriorityClass)
 	if !ok {

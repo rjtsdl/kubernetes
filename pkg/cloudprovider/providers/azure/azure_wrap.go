@@ -40,6 +40,19 @@ func checkResourceExistsFromError(err error) (bool, error) {
 	return false, v
 }
 
+// If it is StatusNotFound return nil,
+// Otherwise, return what it is
+func ignoreStatusNotFoundFromError(err error) error {
+	if err == nil {
+		return nil
+	}
+	v, ok := err.(autorest.DetailedError)
+	if ok && v.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	return err
+}
+
 func (az *Cloud) getVirtualMachine(nodeName types.NodeName) (vm compute.VirtualMachine, exists bool, err error) {
 	var realErr error
 

@@ -118,6 +118,18 @@ type Config struct {
 	MaximumAllowedLoadBalancerRuleCount int `json:"maximumAllowedLoadBalancerRuleCount"`
 }
 
+type iVirtualMachinesClient interface {
+	CreateOrUpdate(resourceGroupName string, VMName string, parameters compute.VirtualMachine, cancel <-chan struct{}) (<-chan compute.VirtualMachine, <-chan error)
+	Get(resourceGroupName string, VMName string, expand compute.InstanceViewTypes) (result compute.VirtualMachine, err error)
+	List(resourceGroupName string) (result compute.VirtualMachineListResult, err error)
+	ListAllNextResults(lastResults compute.VirtualMachineListResult) (result compute.VirtualMachineListResult, err error)
+}
+
+type iInterfacesClient interface {
+	CreateOrUpdate(resourceGroupName string, networkInterfaceName string, parameters network.Interface, cancel <-chan struct{}) (<-chan network.Interface, <-chan error)
+	Get(resourceGroupName string, networkInterfaceName string, expand string) (result network.Interface, err error)
+}
+
 type iLoadBalancersClient interface {
 	CreateOrUpdate(resourceGroupName string, loadBalancerName string, parameters network.LoadBalancer, cancel <-chan struct{}) (<-chan network.LoadBalancer, <-chan error)
 	Delete(resourceGroupName string, loadBalancerName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
@@ -144,18 +156,6 @@ type iSecurityGroupsClient interface {
 	Delete(resourceGroupName string, networkSecurityGroupName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
 	Get(resourceGroupName string, networkSecurityGroupName string, expand string) (result network.SecurityGroup, err error)
 	List(resourceGroupName string) (result network.SecurityGroupListResult, err error)
-}
-
-type iVirtualMachinesClient interface {
-	CreateOrUpdate(resourceGroupName string, VMName string, parameters compute.VirtualMachine, cancel <-chan struct{}) (<-chan compute.VirtualMachine, <-chan error)
-	Get(resourceGroupName string, VMName string, expand compute.InstanceViewTypes) (result compute.VirtualMachine, err error)
-	List(resourceGroupName string) (result compute.VirtualMachineListResult, err error)
-	ListAllNextResults(lastResults compute.VirtualMachineListResult) (result compute.VirtualMachineListResult, err error)
-}
-
-type iInterfacesClient interface {
-	CreateOrUpdate(resourceGroupName string, networkInterfaceName string, parameters network.Interface, cancel <-chan struct{}) (<-chan network.Interface, <-chan error)
-	Get(resourceGroupName string, networkInterfaceName string, expand string) (result network.Interface, err error)
 }
 
 // Cloud holds the config and clients
@@ -209,8 +209,12 @@ func GetServicePrincipalToken(config *Config, env *azure.Environment) (*adal.Ser
 
 	if config.UseManagedIdentityExtension {
 		glog.V(2).Infoln("azure: using managed identity extension to retrieve access token")
+		msiEndpoint, err := adal.GetMSIVMEndpoint()
+		if err != nil {
+			return nil, fmt.Errorf("Getting the managed service identity endpoint: %v", err)
+		}
 		return adal.NewServicePrincipalTokenFromMSI(
-			*oauthConfig,
+			msiEndpoint,
 			env.ServiceManagementEndpoint)
 	}
 
