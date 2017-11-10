@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/Azure/go-autorest/autorest"
 )
@@ -141,10 +142,14 @@ func (fAPC fakeAzurePIPClient) CreateOrUpdate(resourceGroupName string, publicIP
 	pipID := getpublicIPAddressID(fAPC.SubscriptionID, resourceGroupName, publicIPAddressName)
 	parameters.ID = &pipID
 
-	// assign ip
-	rand.Seed(time.Now().UnixNano())
-	randomIP := fmt.Sprintf("%d.%d.%d.%d", rand.Intn(256), rand.Intn(256), rand.Intn(256), rand.Intn(256))
-	parameters.IPAddress = &randomIP
+	// only create in the case user has not provided
+	if parameters.PublicIPAddressPropertiesFormat != nil &&
+		parameters.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod == network.Static {
+		// assign ip
+		rand.Seed(time.Now().UnixNano())
+		randomIP := fmt.Sprintf("%d.%d.%d.%d", rand.Intn(256), rand.Intn(256), rand.Intn(256), rand.Intn(256))
+		parameters.IPAddress = &randomIP
+	}
 
 	fAPC.FakeStore[resourceGroupName][publicIPAddressName] = parameters
 	result = fAPC.FakeStore[resourceGroupName][publicIPAddressName]
@@ -208,6 +213,111 @@ func (fAPC fakeAzurePIPClient) List(resourceGroupName string) (result network.Pu
 	result.NextLink = nil
 	result.Value = &value
 	return result, nil
+}
+
+type fakeInterfacesClient struct {
+	FakeStore map[string]map[string]network.Interface
+}
+
+func NewFakeInterfacesClient() fakeInterfacesClient {
+	fIC := fakeInterfacesClient{}
+	fIC.FakeStore = make(map[string]map[string]network.Interface)
+
+	return fIC
+}
+
+func (fIC fakeInterfacesClient) CreateOrUpdate(resourceGroupName string, networkInterfaceName string, parameters network.Interface, cancel <-chan struct{}) (<-chan network.Interface, <-chan error) {
+	resultChan := make(chan network.Interface, 1)
+	errChan := make(chan error, 1)
+	var result network.Interface
+	var err error
+	defer func() {
+		resultChan <- result
+		errChan <- err
+		close(resultChan)
+		close(errChan)
+	}()
+	if _, ok := fIC.FakeStore[resourceGroupName]; !ok {
+		fIC.FakeStore[resourceGroupName] = make(map[string]network.Interface)
+	}
+	fIC.FakeStore[resourceGroupName][networkInterfaceName] = parameters
+	result = fIC.FakeStore[resourceGroupName][networkInterfaceName]
+	err = nil
+
+	return resultChan, errChan
+}
+
+func (fIC fakeInterfacesClient) Get(resourceGroupName string, networkInterfaceName string, expand string) (result network.Interface, err error) {
+	if _, ok := fIC.FakeStore[resourceGroupName]; ok {
+		if entity, ok := fIC.FakeStore[resourceGroupName][networkInterfaceName]; ok {
+			return entity, nil
+		}
+	}
+	return result, autorest.DetailedError{
+		StatusCode: http.StatusNotFound,
+		Message:    "Not such Interface",
+	}
+}
+
+type fakeVirtualMachinesClient struct {
+	FakeStore map[string]map[string]compute.VirtualMachine
+}
+
+func NewFakeVirtualMachinesClient() fakeVirtualMachinesClient {
+	fVMC := fakeVirtualMachinesClient{}
+	fVMC.FakeStore = make(map[string]map[string]compute.VirtualMachine)
+
+	return fVMC
+}
+
+func (fVMC fakeVirtualMachinesClient) CreateOrUpdate(resourceGroupName string, VMName string, parameters compute.VirtualMachine, cancel <-chan struct{}) (<-chan compute.VirtualMachine, <-chan error) {
+	resultChan := make(chan compute.VirtualMachine, 1)
+	errChan := make(chan error, 1)
+	var result compute.VirtualMachine
+	var err error
+	defer func() {
+		resultChan <- result
+		errChan <- err
+		close(resultChan)
+		close(errChan)
+	}()
+	if _, ok := fVMC.FakeStore[resourceGroupName]; !ok {
+		fVMC.FakeStore[resourceGroupName] = make(map[string]compute.VirtualMachine)
+	}
+	fVMC.FakeStore[resourceGroupName][VMName] = parameters
+	result = fVMC.FakeStore[resourceGroupName][VMName]
+	err = nil
+	return resultChan, errChan
+}
+
+func (fVMC fakeVirtualMachinesClient) Get(resourceGroupName string, VMName string, expand compute.InstanceViewTypes) (result compute.VirtualMachine, err error) {
+	if _, ok := fVMC.FakeStore[resourceGroupName]; ok {
+		if entity, ok := fVMC.FakeStore[resourceGroupName][VMName]; ok {
+			return entity, nil
+		}
+	}
+	return result, autorest.DetailedError{
+		StatusCode: http.StatusNotFound,
+		Message:    "Not such VM",
+	}
+}
+
+func (fVMC fakeVirtualMachinesClient) List(resourceGroupName string) (result compute.VirtualMachineListResult, err error) {
+	var value []compute.VirtualMachine
+	if _, ok := fVMC.FakeStore[resourceGroupName]; ok {
+		for _, v := range fVMC.FakeStore[resourceGroupName] {
+			value = append(value, v)
+		}
+	}
+	result.Response.Response = &http.Response{
+		StatusCode: http.StatusOK,
+	}
+	result.NextLink = nil
+	result.Value = &value
+	return result, nil
+}
+func (fVMC fakeVirtualMachinesClient) ListAllNextResults(lastResults compute.VirtualMachineListResult) (result compute.VirtualMachineListResult, err error) {
+	return compute.VirtualMachineListResult{}, nil
 }
 
 type fakeAzureSubnetsClient struct {

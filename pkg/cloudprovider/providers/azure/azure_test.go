@@ -19,17 +19,22 @@ package azure
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/flowcontrol"
 	serviceapi "k8s.io/kubernetes/pkg/api/v1/service"
+	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
 
+	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/Azure/go-autorest/autorest/to"
 )
@@ -40,6 +45,7 @@ var testClusterName = "testCluster"
 func TestAddPort(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80)
+	clusterResources := getClusterResources(az, 1, 1)
 
 	svc.Spec.Ports = append(svc.Spec.Ports, v1.ServicePort{
 		Name:     fmt.Sprintf("port-udp-%d", 1234),
@@ -48,7 +54,7 @@ func TestAddPort(t *testing.T) {
 		NodePort: getBackendPort(1234),
 	})
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -61,13 +67,245 @@ func TestAddPort(t *testing.T) {
 	validateLoadBalancer(t, lb, svc)
 }
 
+func TestLoadBalancerInternalServiceModeSelection(t *testing.T) {
+	testLoadBalancerServiceAutoModeSelection(t, true)
+	testLoadBalancerServicesSpecifiedSelection(t, true)
+	testLoadBalancerMaxRulesServices(t, true)
+	testLoadBalancerServiceAutoModeDeleteSelection(t, true)
+}
+
+func TestLoadBalancerExternalServiceModeSelection(t *testing.T) {
+	testLoadBalancerServiceAutoModeSelection(t, false)
+	testLoadBalancerServicesSpecifiedSelection(t, false)
+	testLoadBalancerMaxRulesServices(t, false)
+	testLoadBalancerServiceAutoModeDeleteSelection(t, false)
+}
+
+// Validate even distribution of external services across load balances
+// based on number of availability sets
+func testLoadBalancerServiceAutoModeSelection(t *testing.T, isInternal bool) {
+	az := getTestCloud()
+	const vmCount = 8
+	const availabilitySetCount = 4
+	const serviceCount = 9
+
+	clusterResources := getClusterResources(az, vmCount, availabilitySetCount)
+	getTestSecurityGroup(az)
+
+	for index := 1; index <= serviceCount; index++ {
+		svcName := fmt.Sprintf("service-%d", index)
+		var svc v1.Service
+		if isInternal {
+			svc = getInternalTestService(az, svcName, 8081)
+			addTestSubnet(t, az, &svc)
+		} else {
+			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
+		}
+		setLoadBalancerAutoModeAnnotation(&svc)
+		lbStatus, err := az.EnsureLoadBalancer(testClusterName, &svc, clusterResources.nodes)
+		if err != nil {
+			t.Errorf("Unexpected error: %q", err)
+		}
+		if lbStatus == nil {
+			t.Errorf("Unexpected error: %s", svcName)
+		}
+
+		expectedNumOfLB := index % availabilitySetCount
+		if index >= availabilitySetCount {
+			expectedNumOfLB = availabilitySetCount
+		}
+		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
+		lbCount := len(*result.Value)
+		if lbCount != expectedNumOfLB {
+			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
+		}
+
+		maxRules := 0
+		minRules := serviceCount
+		for x := range *result.Value {
+			lb := (*result.Value)[x]
+			ruleCount := len(*lb.LoadBalancingRules)
+			if ruleCount < minRules {
+				minRules = ruleCount
+			}
+			if ruleCount > maxRules {
+				maxRules = ruleCount
+			}
+		}
+
+		delta := maxRules - minRules
+		if delta > 1 {
+			t.Errorf("Unexpected min or max rule in LB's in resource group: Service Index (%d) Min (%d) Max(%d)", index, minRules, maxRules)
+		}
+	}
+}
+
+// Validate availability set selection of services across load balancers
+// based on provided availability sets through service annotation
+func testLoadBalancerServicesSpecifiedSelection(t *testing.T, isInternal bool) {
+	az := getTestCloud()
+	const vmCount = 8
+	const availabilitySetCount = 4
+	const serviceCount = 9
+
+	clusterResources := getClusterResources(az, vmCount, availabilitySetCount)
+	getTestSecurityGroup(az)
+
+	selectedAvailabilitySetName1 := getASName(az, 1, availabilitySetCount)
+	selectedAvailabilitySetName2 := getASName(az, 2, availabilitySetCount)
+	for index := 1; index <= serviceCount; index++ {
+		svcName := fmt.Sprintf("service-%d", index)
+		var svc v1.Service
+		if isInternal {
+			svc = getInternalTestService(az, svcName, 8081)
+			addTestSubnet(t, az, &svc)
+		} else {
+			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
+		}
+		lbMode := fmt.Sprintf("%s,%s", selectedAvailabilitySetName1, selectedAvailabilitySetName2)
+		setLoadBalancerModeAnnotation(&svc, lbMode)
+
+		lbStatus, err := az.EnsureLoadBalancer(testClusterName, &svc, clusterResources.nodes)
+		if err != nil {
+			t.Errorf("Unexpected error: %q", err)
+		}
+		if lbStatus == nil {
+			t.Errorf("Unexpected error: %s", svcName)
+		}
+
+		expectedNumOfLB := index % 2
+		if index >= 2 {
+			expectedNumOfLB = 2
+		}
+		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
+		lbCount := len(*result.Value)
+		if lbCount != expectedNumOfLB {
+			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
+		}
+	}
+}
+
+func testLoadBalancerMaxRulesServices(t *testing.T, isInternal bool) {
+	az := getTestCloud()
+	const vmCount = 1
+	const availabilitySetCount = 1
+
+	clusterResources := getClusterResources(az, vmCount, availabilitySetCount)
+	getTestSecurityGroup(az)
+
+	az.Config.MaximumAllowedLoadBalancerRuleCount = 1
+
+	for index := 1; index <= az.Config.MaximumAllowedLoadBalancerRuleCount; index++ {
+		svcName := fmt.Sprintf("service-%d", index)
+		var svc v1.Service
+		if isInternal {
+			svc = getInternalTestService(az, svcName, 8081)
+			addTestSubnet(t, az, &svc)
+		} else {
+			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
+		}
+
+		lbStatus, err := az.EnsureLoadBalancer(testClusterName, &svc, clusterResources.nodes)
+		if err != nil {
+			t.Errorf("Unexpected error: %q", err)
+		}
+		if lbStatus == nil {
+			t.Errorf("Unexpected error: %s", svcName)
+		}
+
+		expectedNumOfLB := index % az.Config.MaximumAllowedLoadBalancerRuleCount
+		if index >= az.Config.MaximumAllowedLoadBalancerRuleCount {
+			expectedNumOfLB = az.Config.MaximumAllowedLoadBalancerRuleCount
+		}
+		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
+		lbCount := len(*result.Value)
+		if lbCount != expectedNumOfLB {
+			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
+		}
+	}
+
+	// validate adding a new service fails since it will exceed the max limit on LB
+	svcName := fmt.Sprintf("service-%d", az.Config.MaximumAllowedLoadBalancerRuleCount+1)
+	var svc v1.Service
+	if isInternal {
+		svc = getInternalTestService(az, svcName, 8081)
+		addTestSubnet(t, az, &svc)
+	} else {
+		svc = getTestService(svcName, v1.ProtocolTCP, 8081)
+	}
+	_, err := az.EnsureLoadBalancer(testClusterName, &svc, clusterResources.nodes)
+	if err == nil {
+		t.Errorf("Expect any new service to fail as max limit in lb has reached")
+	}
+}
+
+// Validate even distribution of external services across load balances
+// based on number of availability sets
+func testLoadBalancerServiceAutoModeDeleteSelection(t *testing.T, isInternal bool) {
+	az := getTestCloud()
+	const vmCount = 8
+	const availabilitySetCount = 4
+	const serviceCount = 9
+
+	clusterResources := getClusterResources(az, vmCount, availabilitySetCount)
+	getTestSecurityGroup(az)
+
+	for index := 1; index <= serviceCount; index++ {
+		svcName := fmt.Sprintf("service-%d", index)
+		var svc v1.Service
+		if isInternal {
+			svc = getInternalTestService(az, svcName, 8081)
+			addTestSubnet(t, az, &svc)
+		} else {
+			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
+		}
+		setLoadBalancerAutoModeAnnotation(&svc)
+		lbStatus, err := az.EnsureLoadBalancer(testClusterName, &svc, clusterResources.nodes)
+		if err != nil {
+			t.Errorf("Unexpected error: %q", err)
+		}
+		if lbStatus == nil {
+			t.Errorf("Unexpected error: %s", svcName)
+		}
+	}
+
+	for index := serviceCount; index >= 1; index-- {
+		svcName := fmt.Sprintf("service-%d", index)
+		var svc v1.Service
+		if isInternal {
+			svc = getInternalTestService(az, svcName, 8081)
+			addTestSubnet(t, az, &svc)
+		} else {
+			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
+		}
+
+		setLoadBalancerAutoModeAnnotation(&svc)
+
+		expectedNumOfLB := index % availabilitySetCount
+		if index >= availabilitySetCount {
+			expectedNumOfLB = availabilitySetCount
+		}
+		result, _ := az.LoadBalancerClient.List(az.Config.ResourceGroup)
+		lbCount := len(*result.Value)
+		if lbCount != expectedNumOfLB {
+			t.Errorf("Unexpected number of LB's: Expected (%d) Found (%d)", expectedNumOfLB, lbCount)
+		}
+
+		err := az.EnsureLoadBalancerDeleted(testClusterName, &svc)
+		if err != nil {
+			t.Errorf("Unexpected error: %q", err)
+		}
+	}
+}
+
 // Test addition of a new service on an internal LB with a subnet.
 func TestReconcileLoadBalancerAddServiceOnInternalSubnet(t *testing.T) {
 	az := getTestCloud()
-	svc := getInternalTestService("servicea", 80)
+	clusterResources := getClusterResources(az, 1, 1)
+	svc := getInternalTestService(az, "servicea", 80)
 	addTestSubnet(t, az, &svc)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -83,14 +321,15 @@ func TestReconcileLoadBalancerAddServiceOnInternalSubnet(t *testing.T) {
 // Test addition of services on an internal LB using both default and explicit subnets.
 func TestReconcileLoadBalancerAddServicesOnMultipleSubnets(t *testing.T) {
 	az := getTestCloud()
+	clusterResources := getClusterResources(az, 1, 1)
 	svc1 := getTestService("service1", v1.ProtocolTCP, 8081)
-	svc2 := getInternalTestService("service2", 8081)
+	svc2 := getInternalTestService(az, "service2", 8081)
 
 	// Internal and External service cannot reside on the same LB resource
 	addTestSubnet(t, az, &svc2)
 
 	// svc1 is using LB without "-internal" suffix
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc1, nil, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc1, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling svc1: %q", err)
 	}
@@ -119,10 +358,11 @@ func TestReconcileLoadBalancerAddServicesOnMultipleSubnets(t *testing.T) {
 // Test moving a service exposure from one subnet to another.
 func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	az := getTestCloud()
-	svc := getInternalTestService("service1", 8081)
+	clusterResources := getClusterResources(az, 1, 1)
+	svc := getInternalTestService(az, "service1", 8081)
 	addTestSubnet(t, az, &svc)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling initial svc: %q", err)
 	}
@@ -132,7 +372,7 @@ func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	svc.Annotations[ServiceAnnotationLoadBalancerInternalSubnet] = "NewSubnet"
 	addTestSubnet(t, az, &svc)
 
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error reconciling edits to svc: %q", err)
 	}
@@ -147,11 +387,12 @@ func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 
 func TestReconcileLoadBalancerNodeHealth(t *testing.T) {
 	az := getTestCloud()
+	clusterResources := getClusterResources(az, 1, 1)
 	svc := getTestService("servicea", v1.ProtocolTCP, 80)
 	svc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeLocal
 	svc.Spec.HealthCheckNodePort = int32(32456)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -167,14 +408,15 @@ func TestReconcileLoadBalancerNodeHealth(t *testing.T) {
 // Test removing all services results in removing the frontend ip configuration
 func TestReconcileLoadBalancerRemoveService(t *testing.T) {
 	az := getTestCloud()
+	clusterResources := getClusterResources(az, 1, 1)
 	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, nil, false /* wantLb */)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, false /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -190,16 +432,17 @@ func TestReconcileLoadBalancerRemoveService(t *testing.T) {
 // Test removing all service ports results in removing the frontend ip configuration
 func TestReconcileLoadBalancerRemoveAllPortsRemovesFrontendConfig(t *testing.T) {
 	az := getTestCloud()
+	clusterResources := getClusterResources(az, 1, 1)
 	svc := getTestService("servicea", v1.ProtocolTCP, 80)
 
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 	validateLoadBalancer(t, lb, svc)
 
 	svcUpdated := getTestService("servicea", v1.ProtocolTCP)
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, nil, false /* wantLb*/)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, clusterResources.nodes, false /* wantLb*/)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -215,14 +458,16 @@ func TestReconcileLoadBalancerRemoveAllPortsRemovesFrontendConfig(t *testing.T) 
 // Test removal of a port from an existing service.
 func TestReconcileLoadBalancerRemovesPort(t *testing.T) {
 	az := getTestCloud()
+	clusterResources := getClusterResources(az, 1, 1)
+
 	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
-	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, nil, true /* wantLb */)
+	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 
 	svcUpdated := getTestService("servicea", v1.ProtocolTCP, 80)
-	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, nil, true /* wantLb */)
+	lb, err = az.reconcileLoadBalancer(testClusterName, &svcUpdated, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -233,15 +478,16 @@ func TestReconcileLoadBalancerRemovesPort(t *testing.T) {
 // Test reconciliation of multiple services on same port
 func TestReconcileLoadBalancerMultipleServices(t *testing.T) {
 	az := getTestCloud()
+	clusterResources := getClusterResources(az, 1, 1)
 	svc1 := getTestService("servicea", v1.ProtocolTCP, 80, 443)
 	svc2 := getTestService("serviceb", v1.ProtocolTCP, 80)
 
-	updatedLoadBalancer, err := az.reconcileLoadBalancer(testClusterName, &svc1, nil, true /* wantLb */)
+	updatedLoadBalancer, err := az.reconcileLoadBalancer(testClusterName, &svc1, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
 
-	updatedLoadBalancer, err = az.reconcileLoadBalancer(testClusterName, &svc2, nil, true /* wantLb */)
+	updatedLoadBalancer, err = az.reconcileLoadBalancer(testClusterName, &svc2, clusterResources.nodes, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -265,7 +511,7 @@ func TestReconcileSecurityGroupNewServiceAddsPort(t *testing.T) {
 func TestReconcileSecurityGroupNewInternalServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
 	getTestSecurityGroup(az)
-	svc1 := getInternalTestService("serviceea", 80)
+	svc1 := getInternalTestService(az, "serviceea", 80)
 
 	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, true /* wantLb */)
 	if err != nil {
@@ -323,26 +569,151 @@ func TestReconcileSecurityWithSourceRanges(t *testing.T) {
 	validateSecurityGroup(t, sg, svc)
 }
 
-func getTestCloud() *Cloud {
-	r := &Cloud{
+func getTestCloud() (az *Cloud) {
+	az = &Cloud{
 		Config: Config{
-			TenantID:          "tenant",
-			SubscriptionID:    "subscription",
-			ResourceGroup:     "rg",
-			VnetResourceGroup: "rg",
-			Location:          "westus",
-			VnetName:          "vnet",
-			SubnetName:        "subnet",
-			SecurityGroupName: "nsg",
-			RouteTableName:    "rt",
+			TenantID:                            "tenant",
+			SubscriptionID:                      "subscription",
+			ResourceGroup:                       "rg",
+			VnetResourceGroup:                   "rg",
+			Location:                            "westus",
+			VnetName:                            "vnet",
+			SubnetName:                          "subnet",
+			SecurityGroupName:                   "nsg",
+			RouteTableName:                      "rt",
+			PrimaryAvailabilitySetName:          "asName",
+			MaximumAllowedLoadBalancerRuleCount: 250,
 		},
 	}
-	r.operationPollRateLimiter = flowcontrol.NewTokenBucketRateLimiter(100, 100)
-	r.LoadBalancerClient = NewFakeAzureLBClient()
-	r.PublicIPAddressesClient = NewFakeAzurePIPClient(r.Config.SubscriptionID)
-	r.SubnetsClient = NewFakeAzureSubnetsClient()
-	r.SecurityGroupsClient = NewFakeAzureNSGClient()
-	return r
+	az.operationPollRateLimiter = flowcontrol.NewTokenBucketRateLimiter(100, 100)
+	az.LoadBalancerClient = NewFakeAzureLBClient()
+	az.PublicIPAddressesClient = NewFakeAzurePIPClient(az.Config.SubscriptionID)
+	az.SubnetsClient = NewFakeAzureSubnetsClient()
+	az.SecurityGroupsClient = NewFakeAzureNSGClient()
+	az.VirtualMachinesClient = NewFakeVirtualMachinesClient()
+	az.InterfacesClient = NewFakeInterfacesClient()
+
+	return az
+}
+
+const networkInterfacesIDTemplate = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/networkInterfaces/%s"
+const primaryIPConfigIDTemplate = "%s/ipConfigurations/ipconfig"
+
+// returns the full identifier of a publicIPAddress.
+func getNetworkInterfacesID(subscriptionID string, resourceGroupName, nicName string) string {
+	return fmt.Sprintf(
+		networkInterfacesIDTemplate,
+		subscriptionID,
+		resourceGroupName,
+		nicName)
+}
+
+// returns the full identifier of a private ipconfig of the nic
+func getPrimaryIPConfigID(nicID string) string {
+	return fmt.Sprintf(
+		primaryIPConfigIDTemplate,
+		nicID)
+}
+
+const TestResourceNameFormat = "%s-%d"
+const TestVMResourceBaseName = "vm"
+const TestASResourceBaseName = "as"
+
+func getTestResourceName(resourceBaseName string, index int) string {
+	return fmt.Sprintf(TestResourceNameFormat, resourceBaseName, index)
+}
+
+func getVMName(vmIndex int) string {
+	return getTestResourceName(TestVMResourceBaseName, vmIndex)
+}
+
+func getASName(az *Cloud, vmIndex int, numAS int) string {
+	asIndex := vmIndex % numAS
+	if asIndex == 0 {
+		return az.Config.PrimaryAvailabilitySetName
+	}
+
+	return getTestResourceName(TestASResourceBaseName, asIndex)
+}
+
+func getNICName(vmIndex int) string {
+	// test supporting on 1 nic per vm
+	return getVMName(vmIndex)
+}
+
+type ClusterResources struct {
+	nodes                []*v1.Node
+	availabilitySetNames []string
+}
+
+func getClusterResources(az *Cloud, vmCount int, availabilitySetCount int) (clusterResources *ClusterResources) {
+	if vmCount < availabilitySetCount {
+		return nil
+	}
+	clusterResources = &ClusterResources{}
+	clusterResources.nodes = []*v1.Node{}
+	clusterResources.availabilitySetNames = []string{}
+	for vmIndex := 0; vmIndex < vmCount; vmIndex++ {
+		vmName := getVMName(vmIndex)
+		asName := getASName(az, vmIndex, availabilitySetCount)
+		clusterResources.availabilitySetNames = append(clusterResources.availabilitySetNames, asName)
+
+		nicName := getNICName(vmIndex)
+		nicID := getNetworkInterfacesID(az.Config.SubscriptionID, az.Config.ResourceGroup, nicName)
+		primaryIPConfigID := getPrimaryIPConfigID(nicID)
+		isPrimary := true
+		newNIC := network.Interface{
+			ID:   &nicID,
+			Name: &nicName,
+			InterfacePropertiesFormat: &network.InterfacePropertiesFormat{
+				IPConfigurations: &[]network.InterfaceIPConfiguration{
+					{
+						ID: &primaryIPConfigID,
+						InterfaceIPConfigurationPropertiesFormat: &network.InterfaceIPConfigurationPropertiesFormat{
+							PrivateIPAddress: &nicName,
+							Primary:          &isPrimary,
+						},
+					},
+				},
+			},
+		}
+		az.InterfacesClient.CreateOrUpdate(az.Config.ResourceGroup, nicName, newNIC, nil)
+
+		// create vm
+		asID := az.getAvailabilitySetID(asName)
+		newVM := compute.VirtualMachine{
+			Name:     &vmName,
+			Location: &az.Config.Location,
+			VirtualMachineProperties: &compute.VirtualMachineProperties{
+				AvailabilitySet: &compute.SubResource{
+					ID: &asID,
+				},
+				NetworkProfile: &compute.NetworkProfile{
+					NetworkInterfaces: &[]compute.NetworkInterfaceReference{
+						{
+							ID: &nicID,
+						},
+					},
+				},
+			},
+		}
+
+		_, errChan := az.VirtualMachinesClient.CreateOrUpdate(az.Config.ResourceGroup, vmName, newVM, nil)
+		if err := <-errChan; err != nil {
+		}
+		// add to kubernetes
+		newNode := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: vmName,
+				Labels: map[string]string{
+					kubeletapis.LabelHostname: vmName,
+				},
+			},
+		}
+		clusterResources.nodes = append(clusterResources.nodes, newNode)
+	}
+
+	return clusterResources
 }
 
 func getBackendPort(port int32) int32 {
@@ -391,11 +762,32 @@ func getTestService(identifier string, proto v1.Protocol, requestedPorts ...int3
 	return svc
 }
 
-func getInternalTestService(identifier string, requestedPorts ...int32) v1.Service {
+func getInternalTestService(az *Cloud, identifier string, requestedPorts ...int32) v1.Service {
 	svc := getTestService(identifier, v1.ProtocolTCP, requestedPorts...)
 	svc.Annotations[ServiceAnnotationLoadBalancerInternal] = "true"
+	// assign private lb ip
+	rand.Seed(time.Now().UnixNano())
+	randomIP := fmt.Sprintf("%d.%d.%d.%d", rand.Intn(256), rand.Intn(256), rand.Intn(256), rand.Intn(256))
+	svc.Spec.LoadBalancerIP = randomIP
+
+	pipName := getPublicIPName(testClusterName, &svc)
+	parameters := network.PublicIPAddress{
+		Name: &pipName,
+		PublicIPAddressPropertiesFormat: &network.PublicIPAddressPropertiesFormat{
+			IPAddress: &randomIP,
+		},
+	}
+	_, _ = az.PublicIPAddressesClient.CreateOrUpdate(az.Config.ResourceGroup, pipName, parameters, nil)
 
 	return svc
+}
+
+func setLoadBalancerModeAnnotation(service *v1.Service, lbMode string) {
+	service.Annotations[ServiceAnnotationLoadBalancerMode] = lbMode
+}
+
+func setLoadBalancerAutoModeAnnotation(service *v1.Service) {
+	setLoadBalancerModeAnnotation(service, ServiceAnnotationLoadBalancerAutoModeValue)
 }
 
 func getTestLoadBalancer(services ...v1.Service) network.LoadBalancer {
