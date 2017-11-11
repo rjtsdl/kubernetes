@@ -864,11 +864,11 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, want
 				*(*pip.Tags)["service"] == serviceName {
 				// We need to process for pips belong to this service
 				pipName := *pip.Name
-				// Cases we don't need public ip
-				// 1. internal LB
-				// 2. don't want a LB
-				// 3. pipName doesn't match the desired pipName
-				if isInternal || !wantLb || pipName != desiredPipName {
+				if wantLb && !isInternal && pipName == desiredPipName {
+					// This is the only case we should preserve the
+					// Public ip resource with match service tag
+					// We could do nothing here, we will ensure that out of the loop
+				} else {
 					// We use tag to decide which IP should be removed
 					glog.V(2).Infof("ensure(%s): pip(%s) - deleting", serviceName, pipName)
 					az.operationPollRateLimiter.Accept()
@@ -896,6 +896,7 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, want
 	}
 
 	if !isInternal && wantLb {
+		// Confirm desired public ip resource exists
 		var rpip *network.PublicIPAddress
 		if rpip, err = az.ensurePublicIPExists(serviceName, desiredPipName); err != nil {
 			return nil, err
