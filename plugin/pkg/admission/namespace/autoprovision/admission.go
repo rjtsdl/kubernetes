@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/kubernetes/pkg/api"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	informers "k8s.io/kubernetes/pkg/client/informers/informers_generated/internalversion"
 	corelisters "k8s.io/kubernetes/pkg/client/listers/core/internalversion"
@@ -106,8 +106,8 @@ func (p *Provision) SetInternalKubeInformerFactory(f informers.SharedInformerFac
 	p.SetReadyFunc(namespaceInformer.Informer().HasSynced)
 }
 
-// Validate implements the Validator interface.
-func (p *Provision) Validate() error {
+// ValidateInitialization implements the InitializationValidator interface.
+func (p *Provision) ValidateInitialization() error {
 	if p.namespaceLister == nil {
 		return fmt.Errorf("missing namespaceLister")
 	}

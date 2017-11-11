@@ -33,8 +33,16 @@ func Register(plugins *admission.Plugins) {
 // It is useful in tests and when using kubernetes in an open manner.
 type AlwaysAdmit struct{}
 
+var _ admission.MutationInterface = AlwaysAdmit{}
+var _ admission.ValidationInterface = AlwaysAdmit{}
+
 // Admit makes an admission decision based on the request attributes
 func (AlwaysAdmit) Admit(a admission.Attributes) (err error) {
+	return nil
+}
+
+// Validate makes an admission decision based on the request attributes.  It is NOT allowed to mutate.
+func (AlwaysAdmit) Validate(a admission.Attributes) (err error) {
 	return nil
 }
 

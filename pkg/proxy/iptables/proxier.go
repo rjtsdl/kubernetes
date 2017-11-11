@@ -41,9 +41,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/helper"
 	apiservice "k8s.io/kubernetes/pkg/api/service"
+	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/apis/core/helper"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/proxy"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
@@ -1343,7 +1343,7 @@ func (proxier *Proxier) syncProxyRules() {
 					// This is very low impact. The NodePort range is intentionally obscure, and unlikely to actually collide with real Services.
 					// This only affects UDP connections, which are not common.
 					// See issue: https://github.com/kubernetes/kubernetes/issues/49881
-					isIPv6 := svcInfo.clusterIP.To4() != nil
+					isIPv6 := utilproxy.IsIPv6(svcInfo.clusterIP)
 					err := utilproxy.ClearUDPConntrackForPort(proxier.exec, lp.Port, isIPv6)
 					if err != nil {
 						glog.Errorf("Failed to clear udp conntrack for port %d, error: %v", lp.Port, err)
