@@ -19,13 +19,11 @@ package azure
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -97,7 +95,7 @@ func testLoadBalancerServiceDefaultModeSelection(t *testing.T, isInternal bool) 
 		svcName := fmt.Sprintf("service-%d", index)
 		var svc v1.Service
 		if isInternal {
-			svc = getInternalTestService(az, svcName, 8081)
+			svc = getInternalTestService(svcName, 8081)
 			addTestSubnet(t, az, &svc)
 		} else {
 			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
@@ -150,7 +148,7 @@ func testLoadBalancerServiceAutoModeSelection(t *testing.T, isInternal bool) {
 		svcName := fmt.Sprintf("service-%d", index)
 		var svc v1.Service
 		if isInternal {
-			svc = getInternalTestService(az, svcName, 8081)
+			svc = getInternalTestService(svcName, 8081)
 			addTestSubnet(t, az, &svc)
 		} else {
 			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
@@ -211,7 +209,7 @@ func testLoadBalancerServicesSpecifiedSelection(t *testing.T, isInternal bool) {
 		svcName := fmt.Sprintf("service-%d", index)
 		var svc v1.Service
 		if isInternal {
-			svc = getInternalTestService(az, svcName, 8081)
+			svc = getInternalTestService(svcName, 8081)
 			addTestSubnet(t, az, &svc)
 		} else {
 			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
@@ -253,7 +251,7 @@ func testLoadBalancerMaxRulesServices(t *testing.T, isInternal bool) {
 		svcName := fmt.Sprintf("service-%d", index)
 		var svc v1.Service
 		if isInternal {
-			svc = getInternalTestService(az, svcName, 8081)
+			svc = getInternalTestService(svcName, 8081)
 			addTestSubnet(t, az, &svc)
 		} else {
 			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
@@ -282,7 +280,7 @@ func testLoadBalancerMaxRulesServices(t *testing.T, isInternal bool) {
 	svcName := fmt.Sprintf("service-%d", az.Config.MaximumAllowedLoadBalancerRuleCount+1)
 	var svc v1.Service
 	if isInternal {
-		svc = getInternalTestService(az, svcName, 8081)
+		svc = getInternalTestService(svcName, 8081)
 		addTestSubnet(t, az, &svc)
 	} else {
 		svc = getTestService(svcName, v1.ProtocolTCP, 8081)
@@ -308,7 +306,7 @@ func testLoadBalancerServiceAutoModeDeleteSelection(t *testing.T, isInternal boo
 		svcName := fmt.Sprintf("service-%d", index)
 		var svc v1.Service
 		if isInternal {
-			svc = getInternalTestService(az, svcName, 8081)
+			svc = getInternalTestService(svcName, 8081)
 			addTestSubnet(t, az, &svc)
 		} else {
 			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
@@ -327,7 +325,7 @@ func testLoadBalancerServiceAutoModeDeleteSelection(t *testing.T, isInternal boo
 		svcName := fmt.Sprintf("service-%d", index)
 		var svc v1.Service
 		if isInternal {
-			svc = getInternalTestService(az, svcName, 8081)
+			svc = getInternalTestService(svcName, 8081)
 			addTestSubnet(t, az, &svc)
 		} else {
 			svc = getTestService(svcName, v1.ProtocolTCP, 8081)
@@ -356,7 +354,7 @@ func testLoadBalancerServiceAutoModeDeleteSelection(t *testing.T, isInternal boo
 func TestReconcileLoadBalancerAddServiceOnInternalSubnet(t *testing.T) {
 	az := getTestCloud()
 	clusterResources := getClusterResources(az, 1, 1)
-	svc := getInternalTestService(az, "servicea", 80)
+	svc := getInternalTestService("servicea", 80)
 	addTestSubnet(t, az, &svc)
 
 	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
@@ -377,7 +375,7 @@ func TestReconcileLoadBalancerAddServicesOnMultipleSubnets(t *testing.T) {
 	az := getTestCloud()
 	clusterResources := getClusterResources(az, 1, 1)
 	svc1 := getTestService("service1", v1.ProtocolTCP, 8081)
-	svc2 := getInternalTestService(az, "service2", 8081)
+	svc2 := getInternalTestService("service2", 8081)
 
 	// Internal and External service cannot reside on the same LB resource
 	addTestSubnet(t, az, &svc2)
@@ -413,7 +411,7 @@ func TestReconcileLoadBalancerAddServicesOnMultipleSubnets(t *testing.T) {
 func TestReconcileLoadBalancerEditServiceSubnet(t *testing.T) {
 	az := getTestCloud()
 	clusterResources := getClusterResources(az, 1, 1)
-	svc := getInternalTestService(az, "service1", 8081)
+	svc := getInternalTestService("service1", 8081)
 	addTestSubnet(t, az, &svc)
 
 	lb, err := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true /* wantLb */)
@@ -568,7 +566,7 @@ func TestReconcileSecurityGroupNewServiceAddsPort(t *testing.T) {
 func TestReconcileSecurityGroupNewInternalServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
 	getTestSecurityGroup(az)
-	svc1 := getInternalTestService(az, "serviceea", 80)
+	svc1 := getInternalTestService("serviceea", 80)
 	addTestSubnet(t, az, &svc1)
 	clusterResources := getClusterResources(az, 1, 1)
 
@@ -686,7 +684,7 @@ func TestReconcilePublicIPRemoveService(t *testing.T) {
 
 func TestReconcilePublicIPWithInternalService(t *testing.T) {
 	az := getTestCloud()
-	svc := getInternalTestService(az, "servicea", 80, 443)
+	svc := getInternalTestService("servicea", 80, 443)
 
 	pip, err := az.reconcilePublicIP(testClusterName, &svc, true /* wantLB*/)
 	if err != nil {
@@ -698,7 +696,7 @@ func TestReconcilePublicIPWithInternalService(t *testing.T) {
 
 func TestReconcilePublicIPWithExternalAndInternalSwitch(t *testing.T) {
 	az := getTestCloud()
-	svc := getInternalTestService(az, "servicea", 80, 443)
+	svc := getInternalTestService("servicea", 80, 443)
 
 	pip, err := az.reconcilePublicIP(testClusterName, &svc, true /* wantLB*/)
 	if err != nil {
@@ -915,23 +913,9 @@ func getTestService(identifier string, proto v1.Protocol, requestedPorts ...int3
 	return svc
 }
 
-func getInternalTestService(az *Cloud, identifier string, requestedPorts ...int32) v1.Service {
+func getInternalTestService(identifier string, requestedPorts ...int32) v1.Service {
 	svc := getTestService(identifier, v1.ProtocolTCP, requestedPorts...)
 	svc.Annotations[ServiceAnnotationLoadBalancerInternal] = "true"
-	// assign private lb ip
-	rand.Seed(time.Now().UnixNano())
-	randomIP := fmt.Sprintf("%d.%d.%d.%d", rand.Intn(256), rand.Intn(256), rand.Intn(256), rand.Intn(256))
-	svc.Spec.LoadBalancerIP = randomIP
-
-	pipName := getPublicIPName(testClusterName, &svc)
-	parameters := network.PublicIPAddress{
-		Name: &pipName,
-		PublicIPAddressPropertiesFormat: &network.PublicIPAddressPropertiesFormat{
-			IPAddress: &randomIP,
-		},
-	}
-	_, _ = az.PublicIPAddressesClient.CreateOrUpdate(az.Config.ResourceGroup, pipName, parameters, nil)
-
 	return svc
 }
 

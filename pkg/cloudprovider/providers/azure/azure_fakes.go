@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/go-autorest/autorest/to"
+
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/Azure/go-autorest/autorest"
@@ -35,6 +37,15 @@ func (fLBC fakeAzureLBClient) CreateOrUpdate(resourceGroupName string, loadBalan
 	}()
 	if _, ok := fLBC.FakeStore[resourceGroupName]; !ok {
 		fLBC.FakeStore[resourceGroupName] = make(map[string]network.LoadBalancer)
+	}
+
+	// For dynamic ip allocation, just fill in the PrivateIPAddress
+	if parameters.FrontendIPConfigurations != nil {
+		for idx, config := range *parameters.FrontendIPConfigurations {
+			if config.PrivateIPAllocationMethod == network.Dynamic {
+				(*parameters.FrontendIPConfigurations)[idx].PrivateIPAddress = to.StringPtr("10.0.0.19")
+			}
+		}
 	}
 	fLBC.FakeStore[resourceGroupName][loadBalancerName] = parameters
 	result = fLBC.FakeStore[resourceGroupName][loadBalancerName]
