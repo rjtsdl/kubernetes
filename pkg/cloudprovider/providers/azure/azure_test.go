@@ -93,6 +93,8 @@ func testLoadBalancerServiceDefaultModeSelection(t *testing.T, isInternal bool) 
 	clusterResources := getClusterResources(az, vmCount, availabilitySetCount)
 	getTestSecurityGroup(az)
 
+	fmt.Printf("T - nodecount(%d)\n", len(clusterResources.nodes))
+
 	for index := 1; index <= serviceCount; index++ {
 		svcName := fmt.Sprintf("service-%d", index)
 		var svc v1.Service
@@ -553,8 +555,11 @@ func TestReconcileSecurityGroupNewServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
 	getTestSecurityGroup(az)
 	svc1 := getTestService("serviceea", v1.ProtocolTCP, 80)
+	clusterResources := getClusterResources(az, 1, 1)
+	lb, _ := az.reconcileLoadBalancer(testClusterName, &svc1, clusterResources.nodes, true)
+	lbStatus, _ := az.getServiceLoadBalancerStatus(&svc1, lb)
 
-	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, true /* wantLb */)
+	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, lbStatus, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -566,8 +571,12 @@ func TestReconcileSecurityGroupNewInternalServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
 	getTestSecurityGroup(az)
 	svc1 := getInternalTestService(az, "serviceea", 80)
+	addTestSubnet(t, az, &svc1)
+	clusterResources := getClusterResources(az, 1, 1)
 
-	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, true /* wantLb */)
+	lb, _ := az.reconcileLoadBalancer(testClusterName, &svc1, clusterResources.nodes, true)
+	lbStatus, _ := az.getServiceLoadBalancerStatus(&svc1, lb)
+	sg, err := az.reconcileSecurityGroup(testClusterName, &svc1, lbStatus, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -579,11 +588,17 @@ func TestReconcileSecurityGroupRemoveService(t *testing.T) {
 	az := getTestCloud()
 	service1 := getTestService("servicea", v1.ProtocolTCP, 81)
 	service2 := getTestService("serviceb", v1.ProtocolTCP, 82)
+	clusterResources := getClusterResources(az, 1, 1)
+
+	lb, _ := az.reconcileLoadBalancer(testClusterName, &service1, clusterResources.nodes, true)
+	az.reconcileLoadBalancer(testClusterName, &service2, clusterResources.nodes, true)
+
+	lbStatus, _ := az.getServiceLoadBalancerStatus(&service1, lb)
 
 	sg := getTestSecurityGroup(az, service1, service2)
 	validateSecurityGroup(t, sg, service1, service2)
 
-	sg, err := az.reconcileSecurityGroup(testClusterName, &service1, false /* wantLb */)
+	sg, err := az.reconcileSecurityGroup(testClusterName, &service1, lbStatus, false /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -594,11 +609,14 @@ func TestReconcileSecurityGroupRemoveService(t *testing.T) {
 func TestReconcileSecurityGroupRemoveServiceRemovesPort(t *testing.T) {
 	az := getTestCloud()
 	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
+	clusterResources := getClusterResources(az, 1, 1)
 
 	sg := getTestSecurityGroup(az, svc)
-
 	svcUpdated := getTestService("servicea", v1.ProtocolTCP, 80)
-	sg, err := az.reconcileSecurityGroup(testClusterName, &svcUpdated, true /* wantLb */)
+	lb, _ := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true)
+	lbStatus, _ := az.getServiceLoadBalancerStatus(&svc, lb)
+
+	sg, err := az.reconcileSecurityGroup(testClusterName, &svcUpdated, lbStatus, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}
@@ -613,9 +631,13 @@ func TestReconcileSecurityWithSourceRanges(t *testing.T) {
 		"192.168.0.0/24",
 		"10.0.0.0/32",
 	}
+	clusterResources := getClusterResources(az, 1, 1)
 
 	sg := getTestSecurityGroup(az, svc)
-	sg, err := az.reconcileSecurityGroup(testClusterName, &svc, true /* wantLb */)
+	lb, _ := az.reconcileLoadBalancer(testClusterName, &svc, clusterResources.nodes, true)
+	lbStatus, _ := az.getServiceLoadBalancerStatus(&svc, lb)
+
+	sg, err := az.reconcileSecurityGroup(testClusterName, &svc, lbStatus, true /* wantLb */)
 	if err != nil {
 		t.Errorf("Unexpected error: %q", err)
 	}

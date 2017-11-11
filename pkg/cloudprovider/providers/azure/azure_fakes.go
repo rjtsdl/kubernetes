@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
@@ -217,6 +218,7 @@ func (fAPC fakeAzurePIPClient) List(resourceGroupName string) (result network.Pu
 
 type fakeInterfacesClient struct {
 	FakeStore map[string]map[string]network.Interface
+	sync.RWMutex
 }
 
 func NewFakeInterfacesClient() fakeInterfacesClient {
@@ -237,10 +239,12 @@ func (fIC fakeInterfacesClient) CreateOrUpdate(resourceGroupName string, network
 		close(resultChan)
 		close(errChan)
 	}()
+	fIC.Lock()
 	if _, ok := fIC.FakeStore[resourceGroupName]; !ok {
 		fIC.FakeStore[resourceGroupName] = make(map[string]network.Interface)
 	}
 	fIC.FakeStore[resourceGroupName][networkInterfaceName] = parameters
+	fIC.Unlock()
 	result = fIC.FakeStore[resourceGroupName][networkInterfaceName]
 	err = nil
 
@@ -248,6 +252,8 @@ func (fIC fakeInterfacesClient) CreateOrUpdate(resourceGroupName string, network
 }
 
 func (fIC fakeInterfacesClient) Get(resourceGroupName string, networkInterfaceName string, expand string) (result network.Interface, err error) {
+	fIC.RLock()
+	defer fIC.RUnlock()
 	if _, ok := fIC.FakeStore[resourceGroupName]; ok {
 		if entity, ok := fIC.FakeStore[resourceGroupName][networkInterfaceName]; ok {
 			return entity, nil

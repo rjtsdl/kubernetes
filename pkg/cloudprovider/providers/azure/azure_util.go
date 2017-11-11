@@ -171,11 +171,11 @@ func (az *Cloud) selectLoadBalancer(clusterName string, service *v1.Service, exi
 		}
 	}
 	if selectedLB == nil {
-		return nil, false, fmt.Errorf("selectLoadBalancer- unable to find load balancer for selected availability set %v", *availabilitySetNames)
+		return nil, false, fmt.Errorf("selectLoadBalancer- unable to find load balancer for selected availability sets %v", *availabilitySetNames)
 	}
 	// validate if the selected LB has not exceeded the MaximumAllowedLoadBalancerRuleCount
 	if selectedLBRuleCount > az.Config.MaximumAllowedLoadBalancerRuleCount {
-		return selectedLB, existsLb, fmt.Errorf("all available load balancers have exceeded maximum rule limit %d", az.Config.MaximumAllowedLoadBalancerRuleCount)
+		return selectedLB, existsLb, fmt.Errorf("selectLoadBalancer - all available load balancers have exceeded maximum rule limit %d", az.Config.MaximumAllowedLoadBalancerRuleCount)
 	}
 
 	return selectedLB, existsLb, nil
@@ -216,7 +216,7 @@ func (az *Cloud) getLoadBalancerAvailabilitySetNames(service *v1.Service, nodes 
 				}
 			}
 			if !found {
-				return nil, fmt.Errorf("selected availability set (%s) not found", serviceASL[sasx])
+				return nil, fmt.Errorf("availability set (%s) - not found", serviceASL[sasx])
 			}
 		}
 		availabilitySetNames = &serviceASL
@@ -233,7 +233,7 @@ func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]s
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("List Virtual Machines for RG(%s) returned does not exist", az.ResourceGroup)
+		return nil, fmt.Errorf("list: rg(%s) - virtual machines for returned does not exist", az.ResourceGroup)
 	}
 	vmNameToAvailabilitySetID := make(map[string]string, len(*vmListResult.Value))
 	for vmx := range *vmListResult.Value {
@@ -248,7 +248,7 @@ func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]s
 		nodeName := (*nodes[nx]).Name
 		asID, ok := vmNameToAvailabilitySetID[nodeName]
 		if !ok {
-			return nil, fmt.Errorf("Node (%s) has no availability sets", nodeName)
+			return nil, fmt.Errorf("Node (%s) - has no availability sets", nodeName)
 		}
 		if _, ok := mapAvailabilitySetID[asID]; ok {
 			// already added in the list
@@ -257,7 +257,7 @@ func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]s
 		mapAvailabilitySetID[asID] = true
 		asName, err := getLastSegment(asID)
 		if err != nil {
-			glog.Errorf("error: az.getNodeAvailabilitySet(%s), getLastSegment(%s), err=%v", nodeName, asID, err)
+			glog.Errorf("az.getNodeAvailabilitySet(%s), getLastSegment(%s), err=%v", nodeName, asID, err)
 			return nil, err
 		}
 		*agentPoolAs = append(*agentPoolAs, asName)
