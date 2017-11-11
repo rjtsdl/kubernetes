@@ -93,8 +93,6 @@ func testLoadBalancerServiceDefaultModeSelection(t *testing.T, isInternal bool) 
 	clusterResources := getClusterResources(az, vmCount, availabilitySetCount)
 	getTestSecurityGroup(az)
 
-	fmt.Printf("T - nodecount(%d)\n", len(clusterResources.nodes))
-
 	for index := 1; index <= serviceCount; index++ {
 		svcName := fmt.Sprintf("service-%d", index)
 		var svc v1.Service
