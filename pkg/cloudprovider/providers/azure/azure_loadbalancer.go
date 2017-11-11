@@ -57,7 +57,7 @@ func (az *Cloud) GetLoadBalancer(clusterName string, service *v1.Service) (statu
 	if exists == false {
 		serviceName := getServiceName(service)
 		glog.V(5).Infof("getloadbalancer (cluster:%s) (service:%s)- IP doesn't exist in any of the lbs", clusterName, serviceName)
-		return nil, false, fmt.Errorf("Loadbalancer not found for")
+		return nil, false, fmt.Errorf("Service(%s) - Loadbalancer not found", serviceName)
 	}
 
 	return status, true, nil
@@ -73,26 +73,24 @@ func (az *Cloud) EnsureLoadBalancer(clusterName string, service *v1.Service, nod
 		return nil, err
 	}
 
-	if _, err := az.reconcileSecurityGroup(clusterName, service, true /* wantLb */); err != nil {
-		return nil, err
-	}
-
 	if _, err := az.reconcilePublicIP(clusterName, service, true /* wantLb */); err != nil {
 		return nil, err
 	}
 
-	if _, err := az.reconcileLoadBalancer(clusterName, service, nodes, true /* wantLb */); err != nil {
-		return nil, err
-	}
-
-	lbStatus, exists, err := az.GetLoadBalancer(clusterName, service)
+	lb, err := az.reconcileLoadBalancer(clusterName, service, nodes, true /* wantLb */)
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
-		serviceName := getServiceName(service)
-		return nil, fmt.Errorf("ensure(%s) - failed to get back load balancer", serviceName)
+
+	lbStatus, err := az.getServiceLoadBalancerStatus(service, lb)
+	if err != nil {
+		return nil, err
 	}
+
+	if _, err := az.reconcileSecurityGroup(clusterName, service, lbStatus, true /* wantLb */); err != nil {
+		return nil, err
+	}
+
 	return lbStatus, nil
 }
 
@@ -113,7 +111,7 @@ func (az *Cloud) EnsureLoadBalancerDeleted(clusterName string, service *v1.Servi
 
 	glog.V(5).Infof("delete(%s): START clusterName=%q", serviceName, clusterName)
 
-	if _, err := az.reconcileSecurityGroup(clusterName, service, false /* wantLb */); err != nil {
+	if _, err := az.reconcileSecurityGroup(clusterName, service, nil, false /* wantLb */); err != nil {
 		return err
 	}
 
@@ -163,7 +161,6 @@ func (az *Cloud) getServiceLoadBalancer(service *v1.Service, clusterName string,
 			return lb, status, true, nil
 		}
 	}
-
 	// service does not have a load balancer, select one
 	if wantLb {
 		// select new load balancer for service
@@ -174,15 +171,12 @@ func (az *Cloud) getServiceLoadBalancer(service *v1.Service, clusterName string,
 
 		return lb, nil, exists, err
 	}
-
 	if defaultLB == nil {
-		defaultLB := &network.LoadBalancer{
+		defaultLB = &network.LoadBalancer{
 			Name:                         &defaultLBName,
 			Location:                     &az.Location,
 			LoadBalancerPropertiesFormat: &network.LoadBalancerPropertiesFormat{},
 		}
-
-		return defaultLB, nil, false, nil
 	}
 
 	return defaultLB, nil, false, nil
@@ -190,7 +184,7 @@ func (az *Cloud) getServiceLoadBalancer(service *v1.Service, clusterName string,
 
 func (az *Cloud) getServiceLoadBalancerStatus(service *v1.Service, lb *network.LoadBalancer) (status *v1.LoadBalancerStatus, err error) {
 	if lb == nil {
-		glog.V(10).Infof("getServiceLoadBalancerStatus: lb is nil")
+		glog.V(10).Infof("getServiceLoadBalancerStatus lb is nil")
 		return nil, nil
 	}
 	if lb.FrontendIPConfigurations == nil || *lb.FrontendIPConfigurations == nil {
@@ -699,19 +693,9 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 
 // This reconciles the Network Security Group similar to how the LB is reconciled.
 // This entails adding required, missing SecurityRules and removing stale rules.
-func (az *Cloud) reconcileSecurityGroup(clusterName string, service *v1.Service, wantLb bool) (*network.SecurityGroup, error) {
+func (az *Cloud) reconcileSecurityGroup(clusterName string, service *v1.Service, lbStatus *v1.LoadBalancerStatus, wantLb bool) (*network.SecurityGroup, error) {
 	serviceName := getServiceName(service)
 	glog.V(5).Infof("ensure(%s): START clusterName=%q lbName=%q", serviceName, clusterName)
-
-	// Get lbIP since we make up NSG rules based on ingress IP
-	lbStatus, exists, err := az.GetLoadBalancer(clusterName, service)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, fmt.Errorf("ensure(%s) - failed to get back load balancer", serviceName)
-	}
-	lbIP := &lbStatus.Ingress[0].IP
 
 	var ports []v1.ServicePort
 	if wantLb {
@@ -737,6 +721,8 @@ func (az *Cloud) reconcileSecurityGroup(clusterName string, service *v1.Service,
 
 	destinationIPAddress := ""
 	if wantLb {
+		// Get lbIP since we make up NSG rules based on ingress IP
+		lbIP := &lbStatus.Ingress[0].IP
 		if lbIP == nil {
 			return &sg, fmt.Errorf("No load balancer IP for setting up security rules for service %s", service.Name)
 		}
