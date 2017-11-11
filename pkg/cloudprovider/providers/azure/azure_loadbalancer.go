@@ -279,7 +279,6 @@ func (az *Cloud) ensurePublicIPExists(serviceName, pipName string) (*network.Pub
 		PublicIPAllocationMethod: network.Static,
 	}
 	pip.Tags = &map[string]*string{"service": &serviceName}
-
 	glog.V(3).Infof("ensure(%s): pip(%s) - creating", serviceName, *pip.Name)
 	az.operationPollRateLimiter.Accept()
 	glog.V(10).Infof("PublicIPAddressesClient.CreateOrUpdate(%q): start", *pip.Name)

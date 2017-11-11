@@ -552,7 +552,7 @@ func TestReconcileLoadBalancerMultipleServices(t *testing.T) {
 func TestReconcileSecurityGroupNewServiceAddsPort(t *testing.T) {
 	az := getTestCloud()
 	getTestSecurityGroup(az)
-	svc1 := getTestService("serviceea", v1.ProtocolTCP, 80)
+	svc1 := getTestService("servicea", v1.ProtocolTCP, 80)
 	clusterResources := getClusterResources(az, 1, 1)
 	lb, _ := az.reconcileLoadBalancer(testClusterName, &svc1, clusterResources.nodes, true)
 	lbStatus, _ := az.getServiceLoadBalancerStatus(&svc1, lb)
@@ -641,6 +641,85 @@ func TestReconcileSecurityWithSourceRanges(t *testing.T) {
 	}
 
 	validateSecurityGroup(t, sg, svc)
+}
+
+func TestReconcilePublicIPWithNewService(t *testing.T) {
+	az := getTestCloud()
+	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
+
+	pip, err := az.reconcilePublicIP(testClusterName, &svc, true /* wantLB*/)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+	validatePublicIP(t, pip, &svc, true)
+
+	pip2, err := az.reconcilePublicIP(testClusterName, &svc, true /* wantLB */)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+	validatePublicIP(t, pip, &svc, true)
+	if pip.Name != pip2.Name ||
+		pip.PublicIPAddressPropertiesFormat.IPAddress != pip2.PublicIPAddressPropertiesFormat.IPAddress {
+		t.Errorf("We should get the exact same public ip resource after a second reconcile")
+	}
+}
+
+func TestReconcilePublicIPRemoveService(t *testing.T) {
+	az := getTestCloud()
+	svc := getTestService("servicea", v1.ProtocolTCP, 80, 443)
+
+	pip, err := az.reconcilePublicIP(testClusterName, &svc, true /* wantLB*/)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+
+	validatePublicIP(t, pip, &svc, true)
+
+	// Remove the service
+	pip, err = az.reconcilePublicIP(testClusterName, &svc, false /* wantLB */)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+	validatePublicIP(t, pip, &svc, false)
+
+}
+
+func TestReconcilePublicIPWithInternalService(t *testing.T) {
+	az := getTestCloud()
+	svc := getInternalTestService(az, "servicea", 80, 443)
+
+	pip, err := az.reconcilePublicIP(testClusterName, &svc, true /* wantLB*/)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+
+	validatePublicIP(t, pip, &svc, true)
+}
+
+func TestReconcilePublicIPWithExternalAndInternalSwitch(t *testing.T) {
+	az := getTestCloud()
+	svc := getInternalTestService(az, "servicea", 80, 443)
+
+	pip, err := az.reconcilePublicIP(testClusterName, &svc, true /* wantLB*/)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+	validatePublicIP(t, pip, &svc, true)
+
+	// Update to external service
+	svcUpdated := getTestService("servicea", v1.ProtocolTCP, 80)
+	pip, err = az.reconcilePublicIP(testClusterName, &svcUpdated, true /* wantLB*/)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+	validatePublicIP(t, pip, &svcUpdated, true)
+
+	// Update to internal service again
+	pip, err = az.reconcilePublicIP(testClusterName, &svc, true /* wantLB*/)
+	if err != nil {
+		t.Errorf("Unexpected error: %q", err)
+	}
+	validatePublicIP(t, pip, &svc, true)
 }
 
 func getTestCloud() (az *Cloud) {
@@ -1067,6 +1146,33 @@ func describeFIPs(frontendIPs []network.FrontendIPConfiguration) string {
 		description = description + actualFIPText
 	}
 	return description
+}
+
+func validatePublicIP(t *testing.T, publicIP *network.PublicIPAddress, service *v1.Service, wantLB bool) {
+	isInternal := requiresInternalLoadBalancer(service)
+	if isInternal || !wantLB {
+		if publicIP != nil {
+			t.Errorf("Expected publicIP resource to be nil, when it is an internal service or doesn't want LB")
+		}
+		return
+	}
+
+	// For external service
+	if publicIP == nil {
+		t.Errorf("Expected publicIP resource exists, when it is not an internal service")
+	}
+
+	if publicIP.Tags == nil || (*publicIP.Tags)["service"] == nil {
+		t.Errorf("Expected publicIP resource has tags[service]")
+	}
+
+	serviceName := getServiceName(service)
+	if serviceName != *(*publicIP.Tags)["service"] {
+		t.Errorf("Expected publicIP resource has matching tags[service]")
+	}
+	// We cannot use service.Spec.LoadBalancerIP to compare with
+	// Public IP's IPAddress
+	// Becuase service properties are updated outside of cloudprovider code
 }
 
 func validateSecurityGroup(t *testing.T, securityGroup *network.SecurityGroup, services ...v1.Service) {
