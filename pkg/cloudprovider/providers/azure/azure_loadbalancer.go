@@ -243,24 +243,20 @@ func (az *Cloud) determinePublicIPName(clusterName string, service *v1.Service) 
 	}
 
 	az.operationPollRateLimiter.Accept()
-	glog.V(10).Infof("PublicIPAddressesClient.List(%v): start", az.ResourceGroup)
-	list, err := az.PublicIPAddressesClient.List(az.ResourceGroup)
-	glog.V(10).Infof("PublicIPAddressesClient.List(%v): end", az.ResourceGroup)
+	glog.V(10).Infof("PublicIPAddressesClient.ListComplete(%v): start", az.ResourceGroup)
+	pipChn, errChn := az.PublicIPAddressesClient.ListComplete(az.ResourceGroup, nil)
+	glog.V(10).Infof("PublicIPAddressesClient.ListComplete(%v): end", az.ResourceGroup)
+	err := <-errChn
 	if err != nil {
 		return "", err
 	}
 
-	if list.Value != nil {
-		for ix := range *list.Value {
-			ip := &(*list.Value)[ix]
-			if ip.PublicIPAddressPropertiesFormat.IPAddress != nil &&
-				*ip.PublicIPAddressPropertiesFormat.IPAddress == loadBalancerIP {
-				return *ip.Name, nil
-			}
+	for ip := range pipChn {
+		if ip.PublicIPAddressPropertiesFormat.IPAddress != nil &&
+			*ip.PublicIPAddressPropertiesFormat.IPAddress == loadBalancerIP {
+			return *ip.Name, nil
 		}
 	}
-	// TODO: follow next link here? Will there really ever be that many public IPs?
-
 	return "", fmt.Errorf("user supplied IP Address %s was not found", loadBalancerIP)
 }
 
@@ -864,52 +860,51 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, want
 	}
 
 	az.operationPollRateLimiter.Accept()
-	glog.V(10).Infof("PublicIPAddressesClient.List(%v): start", az.ResourceGroup)
+	glog.V(10).Infof("PublicIPAddressesClient.ListComplete(%v): start", az.ResourceGroup)
 	// We don't do backoff/retry here
 	// If List call failed, we rely on service_controller to reconcile this again
-	list, err := az.PublicIPAddressesClient.List(az.ResourceGroup)
-	glog.V(10).Infof("PublicIPAddressesClient.List(%v): end", az.ResourceGroup)
+	pipChn, errChn := az.PublicIPAddressesClient.ListComplete(az.ResourceGroup, nil)
+	glog.V(10).Infof("PublicIPAddressesClient.ListComplete(%v): end", az.ResourceGroup)
+	err = <-errChn
 	if err != nil {
 		return nil, err
 	}
 
-	if list.Value != nil {
-		for ix := range *list.Value {
-			pip := &(*list.Value)[ix]
-			if pip.Tags != nil &&
-				(*pip.Tags)["service"] != nil &&
-				*(*pip.Tags)["service"] == serviceName {
-				// We need to process for pips belong to this service
-				pipName := *pip.Name
-				if wantLb && !isInternal && pipName == desiredPipName {
-					// This is the only case we should preserve the
-					// Public ip resource with match service tag
-					// We could do nothing here, we will ensure that out of the loop
-				} else {
-					// We use tag to decide which IP should be removed
-					glog.V(2).Infof("ensure(%s): pip(%s) - deleting", serviceName, pipName)
-					az.operationPollRateLimiter.Accept()
-					glog.V(10).Infof("PublicIPAddressesClient.Delete(%q): start", pipName)
-					resp, deleteErrChan := az.PublicIPAddressesClient.Delete(az.ResourceGroup, pipName, nil)
-					deleteErr := <-deleteErrChan
-					glog.V(10).Infof("PublicIPAddressesClient.Delete(%q): end", pipName) // response not read yet...
-					if az.CloudProviderBackoff && shouldRetryAPIRequest(<-resp, deleteErr) {
-						glog.V(2).Infof("ensure(%s) backing off: pip(%s) - deleting", serviceName, pipName)
-						retryErr := az.DeletePublicIPWithRetry(pipName)
-						if retryErr != nil {
-							glog.V(2).Infof("ensure(%s) abort backoff: pip(%s) - deleting", serviceName, pipName)
-							return nil, retryErr
-						}
+	for pip := range pipChn {
+		if pip.Tags != nil &&
+			(*pip.Tags)["service"] != nil &&
+			*(*pip.Tags)["service"] == serviceName {
+			// We need to process for pips belong to this service
+			pipName := *pip.Name
+			if wantLb && !isInternal && pipName == desiredPipName {
+				// This is the only case we should preserve the
+				// Public ip resource with match service tag
+				// We could do nothing here, we will ensure that out of the loop
+			} else {
+				// We use tag to decide which IP should be removed
+				glog.V(2).Infof("ensure(%s): pip(%s) - deleting", serviceName, pipName)
+				az.operationPollRateLimiter.Accept()
+				glog.V(10).Infof("PublicIPAddressesClient.Delete(%q): start", pipName)
+				resp, deleteErrChan := az.PublicIPAddressesClient.Delete(az.ResourceGroup, pipName, nil)
+				deleteErr := <-deleteErrChan
+				glog.V(10).Infof("PublicIPAddressesClient.Delete(%q): end", pipName) // response not read yet...
+				if az.CloudProviderBackoff && shouldRetryAPIRequest(<-resp, deleteErr) {
+					glog.V(2).Infof("ensure(%s) backing off: pip(%s) - deleting", serviceName, pipName)
+					retryErr := az.DeletePublicIPWithRetry(pipName)
+					if retryErr != nil {
+						glog.V(2).Infof("ensure(%s) abort backoff: pip(%s) - deleting", serviceName, pipName)
+						return nil, retryErr
 					}
-
-					deleteErr = ignoreStatusNotFoundFromError(deleteErr)
-					if deleteErr != nil {
-						return nil, deleteErr
-					}
-					glog.V(2).Infof("ensure(%s): pip(%s) - finished", serviceName, pipName)
 				}
+
+				deleteErr = ignoreStatusNotFoundFromError(deleteErr)
+				if deleteErr != nil {
+					return nil, deleteErr
+				}
+				glog.V(2).Infof("ensure(%s): pip(%s) - finished", serviceName, pipName)
 			}
 		}
+
 	}
 
 	if !isInternal && wantLb {
