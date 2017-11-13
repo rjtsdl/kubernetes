@@ -116,7 +116,7 @@ type Config struct {
 	UseManagedIdentityExtension bool `json:"useManagedIdentityExtension"`
 
 	// Maximum allowed LoadBalancer Rule Count is the limit enforced by Azure Load balancer
-	MaximumAllowedLoadBalancerRuleCount int `json:"maximumAllowedLoadBalancerRuleCount"`
+	MaximumLoadBalancerRuleCount int `json:"maximumLoadBalancerRuleCount"`
 }
 
 type iVirtualMachinesClient interface {
