@@ -404,7 +404,7 @@ type PersistentVolumeClaimVolumeSource struct {
 
 const (
 	// BetaStorageClassAnnotation represents the beta/previous StorageClass annotation.
-	// It's currently still used and will be held for backwards compatibility
+	// It's deprecated and will be removed in a future release. (#51440)
 	BetaStorageClassAnnotation = "volume.beta.kubernetes.io/storage-class"
 
 	// MountOptionAnnotation defines mount option annotation used in PVs
@@ -2725,8 +2725,8 @@ type ReplicationControllerCondition struct {
 }
 
 // +genclient
-// +genclient:method=GetScale,verb=get,subresource=scale,result=k8s.io/kubernetes/pkg/apis/extensions.Scale
-// +genclient:method=UpdateScale,verb=update,subresource=scale,input=k8s.io/kubernetes/pkg/apis/extensions.Scale,result=k8s.io/kubernetes/pkg/apis/extensions.Scale
+// +genclient:method=GetScale,verb=get,subresource=scale,result=k8s.io/kubernetes/pkg/apis/autoscaling.Scale
+// +genclient:method=UpdateScale,verb=update,subresource=scale,input=k8s.io/kubernetes/pkg/apis/autoscaling.Scale,result=k8s.io/kubernetes/pkg/apis/autoscaling.Scale
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // ReplicationController represents the configuration of a replication controller.

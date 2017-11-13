@@ -1,3 +1,4 @@
+
 cluster/images/etcd-version-monitor
 cmd/gke-certificates-controller/app
 cmd/hyperkube
@@ -6,6 +7,7 @@ cmd/kube-proxy/app
 cmd/kubeadm/app
 cmd/kubeadm/app/apis/kubeadm
 cmd/kubeadm/app/apis/kubeadm/v1alpha1
+cmd/kubeadm/app/phases/etcd/spec
 cmd/kubelet/app
 cmd/kubelet/app/options
 cmd/kubemark
@@ -236,9 +238,10 @@ pkg/proxy/util
 pkg/proxy/winkernel
 pkg/proxy/winuserspace
 pkg/quota/evaluator/core
-pkg/registry/admissionregistration/externaladmissionhookconfiguration/storage
 pkg/registry/admissionregistration/initializerconfiguration/storage
+pkg/registry/admissionregistration/mutatingwebhookconfiguration/storage
 pkg/registry/admissionregistration/rest
+pkg/registry/admissionregistration/validatingwebhookconfiguration/storage
 pkg/registry/apps/rest
 pkg/registry/apps/statefulset
 pkg/registry/apps/statefulset/storage
@@ -760,6 +763,7 @@ test/e2e/chaosmonkey
 test/e2e/common
 test/e2e/framework
 test/e2e/framework/metrics
+test/e2e/framework/timer
 test/e2e/instrumentation
 test/e2e/instrumentation/logging
 test/e2e/instrumentation/monitoring
