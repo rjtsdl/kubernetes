@@ -238,21 +238,17 @@ func (az *Cloud) getLoadBalancerAvailabilitySetNames(service *v1.Service, nodes 
 // lists the virtual machines for for the resource group and then builds
 // a list of availability sets that match the nodes available to k8s
 func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]string, err error) {
-	vmListResult, exists, err := az.listVirtualMachines()
+	vms, err := az.listAllNodesInResourceGroup()
 	if err != nil {
 		return nil, err
 	}
-	if !exists {
-		return nil, fmt.Errorf("list: rg(%s) - virtual machines for returned does not exist", az.ResourceGroup)
-	}
-	vmNameToAvailabilitySetID := make(map[string]string, len(*vmListResult.Value))
-	for vmx := range *vmListResult.Value {
-		vm := (*vmListResult.Value)[vmx]
+	vmNameToAvailabilitySetID := make(map[string]string, len(vms))
+	for vmx := range vms {
+		vm := vms[vmx]
 		if vm.AvailabilitySet != nil {
 			vmNameToAvailabilitySetID[*vm.Name] = *vm.AvailabilitySet.ID
 		}
 	}
-
 	availabilitySetIDs := sets.NewString()
 	agentPoolAs = &[]string{}
 	for nx := range nodes {
