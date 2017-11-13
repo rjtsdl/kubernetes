@@ -272,6 +272,10 @@ func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]s
 			glog.Errorf("az.getNodeAvailabilitySet(%s), getLastSegment(%s), err=%v", nodeName, asID, err)
 			return nil, err
 		}
+		// AvailabilitySet ID is currently upper cased in a indeterministic way
+		// We want to keep it lower case, before the ID get fixed
+		asName = strings.ToLower(asName)
+
 		*agentPoolAs = append(*agentPoolAs, asName)
 	}
 
