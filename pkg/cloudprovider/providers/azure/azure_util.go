@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -48,6 +49,9 @@ const (
 
 	// InternalLoadBalancerNameSuffix is load balancer posfix
 	InternalLoadBalancerNameSuffix = "-internal"
+
+	// nodeLabelRole specifies the role of a node
+	nodeLabelRole = "kubernetes.io/role"
 )
 
 var providerIDRE = regexp.MustCompile(`^` + CloudProviderName + `://(?:.*)/Microsoft.Compute/virtualMachines/(.+)$`)
@@ -132,18 +136,19 @@ func (az *Cloud) getpublicIPAddressID(pipName string) string {
 // select load balancer for the service in the cluster
 func (az *Cloud) selectLoadBalancer(clusterName string, service *v1.Service, existingLBs *[]network.LoadBalancer, nodes []*v1.Node) (selectedLB *network.LoadBalancer, existsLb bool, err error) {
 	isInternal := requiresInternalLoadBalancer(service)
+	serviceName := getServiceName(service)
+	glog.V(3).Infof("selectLoadBalancer(%s): isInternal(%s) - start", serviceName, isInternal)
 	availabilitySetNames, err := az.getLoadBalancerAvailabilitySetNames(service, nodes)
 	if err != nil {
 		return nil, false, err
 	}
-
+	glog.V(3).Infof("selectLoadBalancer(%s): isInternal(%s) - availabilitysetsname %v", serviceName, *availabilitySetNames)
 	mapExistingLBs := map[string]*network.LoadBalancer{}
 	for lbx := range *existingLBs {
 		lb := (*existingLBs)[lbx]
 		mapExistingLBs[*lb.Name] = &lb
 	}
-
-	selectedLBRuleCount := az.Config.MaximumAllowedLoadBalancerRuleCount
+	selectedLBRuleCount := math.MaxInt32
 	for asx := range *availabilitySetNames {
 		currASName := (*availabilitySetNames)[asx]
 		currLBName := az.getLoadBalancerName(clusterName, currASName, isInternal)
@@ -170,12 +175,16 @@ func (az *Cloud) selectLoadBalancer(clusterName string, service *v1.Service, exi
 			selectedLB = lb
 		}
 	}
+
 	if selectedLB == nil {
+		glog.Errorf("selectLoadBalancer service (%s) - unable to find load balancer for selected availability sets %v", serviceName, *availabilitySetNames)
 		return nil, false, fmt.Errorf("selectLoadBalancer- unable to find load balancer for selected availability sets %v", *availabilitySetNames)
 	}
-	// validate if the selected LB has not exceeded the MaximumAllowedLoadBalancerRuleCount
-	if selectedLBRuleCount > az.Config.MaximumAllowedLoadBalancerRuleCount {
-		return selectedLB, existsLb, fmt.Errorf("selectLoadBalancer - all available load balancers have exceeded maximum rule limit %d", az.Config.MaximumAllowedLoadBalancerRuleCount)
+	// validate if the selected LB has not exceeded the MaximumLoadBalancerRuleCount
+	if az.Config.MaximumLoadBalancerRuleCount != 0 && selectedLBRuleCount >= az.Config.MaximumLoadBalancerRuleCount {
+		err = fmt.Errorf("selectLoadBalancer service (%s) -  all available load balancers have exceeded maximum rule limit %d", serviceName, selectedLBRuleCount)
+		glog.Error(err)
+		return selectedLB, existsLb, err
 	}
 
 	return selectedLB, existsLb, nil
@@ -246,6 +255,9 @@ func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]s
 	agentPoolAs = &[]string{}
 	for nx := range nodes {
 		nodeName := (*nodes[nx]).Name
+		if isMasterNode(nodes[nx]) {
+			continue
+		}
 		asID, ok := vmNameToAvailabilitySetID[nodeName]
 		if !ok {
 			return nil, fmt.Errorf("Node (%s) - has no availability sets", nodeName)
@@ -288,6 +300,19 @@ func (az *Cloud) getLoadBalancerName(clusterName string, availabilitySetName str
 		return fmt.Sprintf("%s%s", lbNamePrefix, InternalLoadBalancerNameSuffix)
 	}
 	return lbNamePrefix
+}
+
+// isMasterNode returns returns true is the node has a master role label.
+// The master role is determined by looking for:
+// * a kubernetes.io/role="master" label
+func isMasterNode(node *v1.Node) bool {
+	for k, v := range node.Labels {
+		if k == nodeLabelRole && v == "master" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // returns the deepest child's identifier from a full identifier string.

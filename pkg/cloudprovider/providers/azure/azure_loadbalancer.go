@@ -68,6 +68,8 @@ func (az *Cloud) EnsureLoadBalancer(clusterName string, service *v1.Service, nod
 	// When a client updates the internal load balancer annotation,
 	// the service may be switched from an internal LB to a public one, or vise versa.
 	// Here we'll firstly ensure service do not lie in the opposite LB.
+	serviceName := getServiceName(service)
+	glog.V(5).Infof("ensureloadbalancer(%s): START clusterName=%q", serviceName, clusterName)
 	flipedService := flipServiceInternalAnnotation(service)
 	if _, err := az.reconcileLoadBalancer(clusterName, flipedService, nil, false /* wantLb */); err != nil {
 		return nil, err
@@ -108,9 +110,7 @@ func (az *Cloud) UpdateLoadBalancer(clusterName string, service *v1.Service, nod
 // doesn't exist even if some part of it is still laying around.
 func (az *Cloud) EnsureLoadBalancerDeleted(clusterName string, service *v1.Service) error {
 	serviceName := getServiceName(service)
-
 	glog.V(5).Infof("delete(%s): START clusterName=%q", serviceName, clusterName)
-
 	if _, err := az.reconcileSecurityGroup(clusterName, service, nil, false /* wantLb */); err != nil {
 		return err
 	}
