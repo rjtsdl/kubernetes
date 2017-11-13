@@ -865,6 +865,8 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, want
 
 	az.operationPollRateLimiter.Accept()
 	glog.V(10).Infof("PublicIPAddressesClient.List(%v): start", az.ResourceGroup)
+	// We don't do backoff/retry here
+	// If List call failed, we rely on service_controller to reconcile this again
 	list, err := az.PublicIPAddressesClient.List(az.ResourceGroup)
 	glog.V(10).Infof("PublicIPAddressesClient.List(%v): end", az.ResourceGroup)
 	if err != nil {
