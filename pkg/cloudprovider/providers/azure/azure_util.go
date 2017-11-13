@@ -33,6 +33,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -251,7 +252,8 @@ func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]s
 			vmNameToAvailabilitySetID[*vm.Name] = *vm.AvailabilitySet.ID
 		}
 	}
-	mapAvailabilitySetID := map[string]bool{}
+
+	availabilitySetIDs := sets.NewString()
 	agentPoolAs = &[]string{}
 	for nx := range nodes {
 		nodeName := (*nodes[nx]).Name
@@ -262,11 +264,10 @@ func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]s
 		if !ok {
 			return nil, fmt.Errorf("Node (%s) - has no availability sets", nodeName)
 		}
-		if _, ok := mapAvailabilitySetID[asID]; ok {
+		if availabilitySetIDs.Has(asID) {
 			// already added in the list
 			continue
 		}
-		mapAvailabilitySetID[asID] = true
 		asName, err := getLastSegment(asID)
 		if err != nil {
 			glog.Errorf("az.getNodeAvailabilitySet(%s), getLastSegment(%s), err=%v", nodeName, asID, err)

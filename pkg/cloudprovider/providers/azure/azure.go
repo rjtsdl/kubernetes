@@ -44,14 +44,14 @@ import (
 
 const (
 	// CloudProviderName is the value used for the --cloud-provider flag
-	CloudProviderName                = "azure"
-	rateLimitQPSDefault              = 1.0
-	rateLimitBucketDefault           = 5
-	backoffRetriesDefault            = 6
-	backoffExponentDefault           = 1.5
-	backoffDurationDefault           = 5 // in seconds
-	backoffJitterDefault             = 1.0
-	maximumAllowedLBRuleCountDefault = 148 // According to Azure LB rule default limit
+	CloudProviderName            = "azure"
+	rateLimitQPSDefault          = 1.0
+	rateLimitBucketDefault       = 5
+	backoffRetriesDefault        = 6
+	backoffExponentDefault       = 1.5
+	backoffDurationDefault       = 5 // in seconds
+	backoffJitterDefault         = 1.0
+	maximumLoadBalancerRuleCount = 148 // According to Azure LB rule default limit
 )
 
 // Config holds the configuration parsed from the --cloud-config flag
@@ -377,8 +377,8 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 
 	az.metadata = NewInstanceMetadata()
 
-	if az.MaximumAllowedLoadBalancerRuleCount == 0 {
-		az.MaximumAllowedLoadBalancerRuleCount = maximumAllowedLBRuleCountDefault
+	if az.MaximumLoadBalancerRuleCount == 0 {
+		az.MaximumLoadBalancerRuleCount = maximumLoadBalancerRuleCount
 	}
 
 	if err := initDiskControllers(&az); err != nil {
