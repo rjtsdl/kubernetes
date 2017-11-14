@@ -142,7 +142,8 @@ type iPublicIPAddressesClient interface {
 	CreateOrUpdate(resourceGroupName string, publicIPAddressName string, parameters network.PublicIPAddress, cancel <-chan struct{}) (<-chan network.PublicIPAddress, <-chan error)
 	Delete(resourceGroupName string, publicIPAddressName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
 	Get(resourceGroupName string, publicIPAddressName string, expand string) (result network.PublicIPAddress, err error)
-	ListComplete(resourceGroupName string, cancel <-chan struct{}) (<-chan network.PublicIPAddress, <-chan error)
+	List(resourceGroupName string) (result network.PublicIPAddressListResult, err error)
+	ListAllNextResults(lastResults network.PublicIPAddressListResult) (result network.PublicIPAddressListResult, err error)
 }
 
 type iSubnetsClient interface {

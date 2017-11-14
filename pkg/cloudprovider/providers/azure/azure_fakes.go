@@ -230,24 +230,10 @@ func (fAPC fakeAzurePIPClient) Get(resourceGroupName string, publicIPAddressName
 	}
 }
 
-func (fAPC fakeAzurePIPClient) ListComplete(resourceGroupName string, cancel <-chan struct{}) (<-chan network.PublicIPAddress, <-chan error) {
+func (fAPC fakeAzurePIPClient) ListAllNextResults(lastResults network.PublicIPAddressListResult) (result network.PublicIPAddressListResult, err error) {
 	fAPC.mutex.Lock()
 	defer fAPC.mutex.Unlock()
-	resultChan := make(chan network.PublicIPAddress)
-	errChan := make(chan error, 1)
-	go func() {
-		defer func() {
-			close(resultChan)
-			close(errChan)
-		}()
-		if _, ok := fAPC.FakeStore[resourceGroupName]; ok {
-			for _, v := range fAPC.FakeStore[resourceGroupName] {
-				resultChan <- v
-			}
-		}
-		errChan <- nil
-	}()
-	return resultChan, errChan
+	return network.PublicIPAddressListResult{}, nil
 }
 
 func (fAPC fakeAzurePIPClient) List(resourceGroupName string) (result network.PublicIPAddressListResult, err error) {
