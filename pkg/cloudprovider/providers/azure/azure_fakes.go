@@ -122,6 +122,17 @@ func (fLBC fakeAzureLBClient) List(resourceGroupName string) (result network.Loa
 	return result, nil
 }
 
+func (fLBC fakeAzureLBClient) ListNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error) {
+	fLBC.mutex.Lock()
+	defer fLBC.mutex.Unlock()
+	result.Response.Response = &http.Response{
+		StatusCode: http.StatusOK,
+	}
+	result.NextLink = nil
+	result.Value = nil
+	return result, nil
+}
+
 type fakeAzurePIPClient struct {
 	mutex          *sync.Mutex
 	FakeStore      map[string]map[string]network.PublicIPAddress
