@@ -196,6 +196,53 @@ func (az *Cloud) LoadBalancerClientListWithRetry() ([]network.LoadBalancer, erro
 	return allLBs, nil
 }
 
+// ListPIPWithRetry list the PIP resources in az.ResourceGroup
+func (az *Cloud) ListPIPWithRetry() ([]network.PublicIPAddress, error) {
+	allPIPs := []network.PublicIPAddress{}
+	var result network.PublicIPAddressListResult
+	err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
+		var retryErr error
+		az.operationPollRateLimiter.Accept()
+		glog.V(10).Infof("PublicIPAddressesClient.List(%v): start", az.ResourceGroup)
+		result, retryErr = az.PublicIPAddressesClient.List(az.ResourceGroup)
+		glog.V(10).Infof("PublicIPAddressesClient.List(%v): end", az.ResourceGroup)
+		if retryErr != nil {
+			glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
+			return false, retryErr
+		}
+		glog.V(2).Infof("backoff: success")
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// follow the next link to get all the vms for resource group
+	morePages := (result.Value != nil && len(*result.Value) >= 1)
+	for morePages {
+		allPIPs = append(allPIPs, *result.Value...)
+		err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
+			var retryErr error
+			az.operationPollRateLimiter.Accept()
+			glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): start", az.ResourceGroup)
+			result, retryErr = az.PublicIPAddressesClient.ListAllNextResults(result)
+			glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): end", az.ResourceGroup)
+			if retryErr != nil {
+				glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
+				return false, retryErr
+			}
+			glog.V(2).Infof("backoff: success")
+			return true, nil
+		})
+		if err != nil {
+			return allPIPs, err
+		}
+		morePages = (result.Value != nil && len(*result.Value) > 1)
+	}
+
+	return allPIPs, nil
+}
+
 // CreateOrUpdatePIPWithRetry invokes az.PublicIPAddressesClient.CreateOrUpdate with exponential backoff retry
 func (az *Cloud) CreateOrUpdatePIPWithRetry(pip network.PublicIPAddress) error {
 	return wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {

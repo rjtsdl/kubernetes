@@ -23,7 +23,6 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider"
 
 	"github.com/Azure/azure-sdk-for-go/arm/compute"
-	"github.com/Azure/azure-sdk-for-go/arm/network"
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -192,37 +191,6 @@ func (az *Cloud) InstanceType(name types.NodeName) (string, error) {
 // expected format for the key is standard ssh-keygen format: <protocol> <blob>
 func (az *Cloud) AddSSHKeyToAllInstances(user string, keyData []byte) error {
 	return fmt.Errorf("not supported")
-}
-
-func (az *Cloud) listAllPublicIPAddressInResourceGroup() ([]network.PublicIPAddress, error) {
-	allIPs := []network.PublicIPAddress{}
-
-	az.operationPollRateLimiter.Accept()
-	glog.V(10).Infof("PublicIPAddressesClient.List(%s): start", az.ResourceGroup)
-	result, err := az.PublicIPAddressesClient.List(az.ResourceGroup)
-	glog.V(10).Infof("PublicIPAddressesClient.List(%s): end", az.ResourceGroup)
-	if err != nil {
-		glog.Errorf("error: az.listAllPublicIPAddressInResourceGroup(), az.PublicIPAddressesClient.List(%s), err=%v", az.ResourceGroup, err)
-		return nil, err
-	}
-
-	morePages := (result.Value != nil && len(*result.Value) > 1)
-
-	for morePages {
-		allIPs = append(allIPs, *result.Value...)
-
-		az.operationPollRateLimiter.Accept()
-		glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): start", az.ResourceGroup)
-		result, err = az.PublicIPAddressesClient.ListAllNextResults(result)
-		glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): end", az.ResourceGroup)
-		if err != nil {
-			glog.Errorf("error: az.listAllPublicIPAddressInResourceGroup(), az.PublicIPAddressesClient.ListAllNextResults(%v), err=%v", result, err)
-			return nil, err
-		}
-
-		morePages = (result.Value != nil && len(*result.Value) > 1)
-	}
-	return allIPs, nil
 }
 
 // CurrentNodeName returns the name of the node we are currently running on

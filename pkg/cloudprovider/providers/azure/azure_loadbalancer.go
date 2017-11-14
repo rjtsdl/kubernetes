@@ -243,7 +243,7 @@ func (az *Cloud) determinePublicIPName(clusterName string, service *v1.Service) 
 		return getPublicIPName(clusterName, service), nil
 	}
 
-	pips, err := az.listAllPublicIPAddressInResourceGroup()
+	pips, err := az.ListPIPWithRetry()
 	if err != nil {
 		return "", err
 	}
@@ -856,7 +856,7 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, want
 		return nil, err
 	}
 
-	pips, err := az.listAllPublicIPAddressInResourceGroup()
+	pips, err := az.ListPIPWithRetry()
 	if err != nil {
 		return nil, err
 	}
