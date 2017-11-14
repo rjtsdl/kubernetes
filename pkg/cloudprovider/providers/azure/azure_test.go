@@ -24,12 +24,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/flowcontrol"
 	serviceapi "k8s.io/kubernetes/pkg/api/v1/service"
 	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
@@ -735,17 +733,9 @@ func getTestCloud() (az *Cloud) {
 			RouteTableName:               "rt",
 			PrimaryAvailabilitySetName:   "asName",
 			MaximumLoadBalancerRuleCount: 250,
-			CloudProviderBackoffDuration: 5,
-			CloudProviderBackoffRetries:  1,
 		},
 	}
 	az.operationPollRateLimiter = flowcontrol.NewTokenBucketRateLimiter(100, 100)
-	az.resourceRequestBackoff = wait.Backoff{
-		Steps:    az.CloudProviderBackoffRetries,
-		Factor:   az.CloudProviderBackoffExponent,
-		Duration: time.Duration(az.CloudProviderBackoffDuration) * time.Second,
-		Jitter:   az.CloudProviderBackoffJitter,
-	}
 	az.LoadBalancerClient = NewFakeAzureLBClient()
 	az.PublicIPAddressesClient = NewFakeAzurePIPClient(az.Config.SubscriptionID)
 	az.SubnetsClient = NewFakeAzureSubnetsClient()
@@ -1289,10 +1279,6 @@ func TestNewCloudFromJSON(t *testing.T) {
 		"routeTableName": "--route-table-name--",
 		"primaryAvailabilitySetName": "--primary-availability-set-name--",
 		"cloudProviderBackoff": true,
-		"cloudProviderBackoffRetries": 6,
-		"cloudProviderBackoffExponent": 1.5,
-		"cloudProviderBackoffDuration": 5,
-		"cloudProviderBackoffJitter": 1.0,
 		"cloudProviderRatelimit": true,
 		"cloudProviderRateLimitQPS": 0.5,
 		"cloudProviderRateLimitBucket": 5
