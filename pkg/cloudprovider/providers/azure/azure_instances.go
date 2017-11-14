@@ -211,7 +211,7 @@ func (az *Cloud) listAllNodesInResourceGroup() ([]compute.VirtualMachine, error)
 		return nil, err
 	}
 
-	morePages := (result.Value != nil && len(*result.Value) > 1)
+	morePages := (result.Value != nil && len(*result.Value) >= 1)
 
 	for morePages {
 		allNodes = append(allNodes, *result.Value...)
@@ -225,7 +225,7 @@ func (az *Cloud) listAllNodesInResourceGroup() ([]compute.VirtualMachine, error)
 			return nil, err
 		}
 
-		morePages = (result.Value != nil && len(*result.Value) > 1)
+		morePages = (result.Value != nil && len(*result.Value) >= 1)
 	}
 
 	return allNodes, nil

@@ -71,37 +71,43 @@ func (az *Cloud) VirtualMachineClientListWithRetry() ([]compute.VirtualMachine, 
 		result, retryErr = az.VirtualMachinesClient.List(az.ResourceGroup)
 		glog.V(10).Infof("VirtualMachinesClient.List(%v): end", az.ResourceGroup)
 		if retryErr != nil {
-			glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
+			glog.Errorf("VirtualMachinesClient.List(%v) - backoff: failure, will retry,err=%v",
+				az.ResourceGroup,
+				retryErr)
 			return false, retryErr
 		}
-		glog.V(2).Infof("backoff: success")
+		glog.V(2).Infof("VirtualMachinesClient.List(%v) - backoff: success", az.ResourceGroup)
 		return true, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// follow the next link to get all the vms for resource group
-	morePages := (result.Value != nil && len(*result.Value) >= 1)
-	for morePages {
+	appendResults := (result.Value != nil && len(*result.Value) > 0)
+	for appendResults {
 		allNodes = append(allNodes, *result.Value...)
-		err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
-			var retryErr error
-			az.operationPollRateLimiter.Accept()
-			glog.V(10).Infof("VirtualMachinesClient.ListAllNextResults(%v): start", az.ResourceGroup)
-			result, retryErr = az.VirtualMachinesClient.ListAllNextResults(result)
-			glog.V(10).Infof("VirtualMachinesClient.ListAllNextResults(%v): end", az.ResourceGroup)
-			if retryErr != nil {
-				glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
-				return false, retryErr
+		appendResults = false
+		// follow the next link to get all the vms for resource group
+		if result.NextLink != nil {
+			err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
+				var retryErr error
+				az.operationPollRateLimiter.Accept()
+				glog.V(10).Infof("VirtualMachinesClient.ListAllNextResults(%v): start", az.ResourceGroup)
+				result, retryErr = az.VirtualMachinesClient.ListAllNextResults(result)
+				glog.V(10).Infof("VirtualMachinesClient.ListAllNextResults(%v): end", az.ResourceGroup)
+				if retryErr != nil {
+					glog.Errorf("VirtualMachinesClient.ListAllNextResults(%v) - backoff: failure, will retry,err=%v",
+						az.ResourceGroup, retryErr)
+					return false, retryErr
+				}
+				glog.V(2).Infof("VirtualMachinesClient.ListAllNextResults(%v): success", az.ResourceGroup)
+				return true, nil
+			})
+			if err != nil {
+				return allNodes, err
 			}
-			glog.V(2).Infof("backoff: success")
-			return true, nil
-		})
-		if err != nil {
-			return allNodes, err
+			appendResults = (result.Value != nil && len(*result.Value) > 0)
 		}
-		morePages = (result.Value != nil && len(*result.Value) > 1)
 	}
 
 	return allNodes, err
@@ -160,37 +166,45 @@ func (az *Cloud) ListLBWithRetry() ([]network.LoadBalancer, error) {
 		result, retryErr = az.LoadBalancerClient.List(az.ResourceGroup)
 		glog.V(10).Infof("LoadBalancerClient.List(%v): end", az.ResourceGroup)
 		if retryErr != nil {
-			glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
+			glog.Errorf("LoadBalancerClient.List(%v) - backoff: failure, will retry,err=%v",
+				az.ResourceGroup,
+				retryErr)
 			return false, retryErr
 		}
-		glog.V(2).Infof("backoff: success")
+		glog.V(2).Infof("LoadBalancerClient.List(%v) - backoff: success", az.ResourceGroup)
 		return true, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// follow the next link to get all the vms for resource group
-	morePages := (result.Value != nil && len(*result.Value) >= 1)
-	for morePages {
+	appendResults := (result.Value != nil && len(*result.Value) > 0)
+	for appendResults {
 		allLBs = append(allLBs, *result.Value...)
-		err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
-			var retryErr error
-			az.operationPollRateLimiter.Accept()
-			glog.V(10).Infof("LoadBalancerClient.ListAllNextResults(%v): start", az.ResourceGroup)
-			result, retryErr = az.LoadBalancerClient.ListAllNextResults(result)
-			glog.V(10).Infof("LoadBalancerClient.ListAllNextResults(%v): end", az.ResourceGroup)
-			if retryErr != nil {
-				glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
-				return false, retryErr
+		appendResults = false
+
+		// follow the next link to get all the vms for resource group
+		if result.NextLink != nil {
+			err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
+				var retryErr error
+				az.operationPollRateLimiter.Accept()
+				glog.V(10).Infof("LoadBalancerClient.ListAllNextResults(%v): start", az.ResourceGroup)
+				result, retryErr = az.LoadBalancerClient.ListAllNextResults(result)
+				glog.V(10).Infof("LoadBalancerClient.ListAllNextResults(%v): end", az.ResourceGroup)
+				if retryErr != nil {
+					glog.Errorf("LoadBalancerClient.ListAllNextResults(%v) - backoff: failure, will retry,err=%v",
+						az.ResourceGroup,
+						retryErr)
+					return false, retryErr
+				}
+				glog.V(2).Infof("LoadBalancerClient.ListAllNextResults(%v) - backoff: success", az.ResourceGroup)
+				return true, nil
+			})
+			if err != nil {
+				return allLBs, err
 			}
-			glog.V(2).Infof("backoff: success")
-			return true, nil
-		})
-		if err != nil {
-			return allLBs, err
+			appendResults = (result.Value != nil && len(*result.Value) > 0)
 		}
-		morePages = (result.Value != nil && len(*result.Value) > 1)
 	}
 
 	return allLBs, nil
@@ -207,37 +221,45 @@ func (az *Cloud) ListPIPWithRetry() ([]network.PublicIPAddress, error) {
 		result, retryErr = az.PublicIPAddressesClient.List(az.ResourceGroup)
 		glog.V(10).Infof("PublicIPAddressesClient.List(%v): end", az.ResourceGroup)
 		if retryErr != nil {
-			glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
+			glog.Errorf("PublicIPAddressesClient.List(%v) - backoff: failure, will retry,err=%v",
+				az.ResourceGroup,
+				retryErr)
 			return false, retryErr
 		}
-		glog.V(2).Infof("backoff: success")
+		glog.V(2).Infof("PublicIPAddressesClient.List(%v) - backoff: success", az.ResourceGroup)
 		return true, nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// follow the next link to get all the vms for resource group
-	morePages := (result.Value != nil && len(*result.Value) >= 1)
-	for morePages {
+	appendResults := (result.Value != nil && len(*result.Value) > 0)
+	for appendResults {
 		allPIPs = append(allPIPs, *result.Value...)
-		err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
-			var retryErr error
-			az.operationPollRateLimiter.Accept()
-			glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): start", az.ResourceGroup)
-			result, retryErr = az.PublicIPAddressesClient.ListAllNextResults(result)
-			glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): end", az.ResourceGroup)
-			if retryErr != nil {
-				glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
-				return false, retryErr
+		appendResults = false
+
+		// follow the next link to get all the vms for resource group
+		if result.NextLink != nil {
+			err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
+				var retryErr error
+				az.operationPollRateLimiter.Accept()
+				glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): start", az.ResourceGroup)
+				result, retryErr = az.PublicIPAddressesClient.ListAllNextResults(result)
+				glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): end", az.ResourceGroup)
+				if retryErr != nil {
+					glog.Errorf("PublicIPAddressesClient.ListAllNextResults(%v) - backoff: failure, will retry,err=%v",
+						az.ResourceGroup,
+						retryErr)
+					return false, retryErr
+				}
+				glog.V(2).Infof("PublicIPAddressesClient.ListAllNextResults(%v) - backoff: success", az.ResourceGroup)
+				return true, nil
+			})
+			if err != nil {
+				return allPIPs, err
 			}
-			glog.V(2).Infof("backoff: success")
-			return true, nil
-		})
-		if err != nil {
-			return allPIPs, err
+			appendResults = (result.Value != nil && len(*result.Value) > 0)
 		}
-		morePages = (result.Value != nil && len(*result.Value) > 1)
 	}
 
 	return allPIPs, nil
