@@ -324,13 +324,13 @@ func (az *Cloud) ensurePublicIPExists(serviceName, pipName, domainNameLabel stri
 func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, nodes []*v1.Node, wantLb bool) (*network.LoadBalancer, error) {
 	isInternal := requiresInternalLoadBalancer(service)
 	serviceName := getServiceName(service)
-	glog.V(2).Infof("reconcileLoadBalancer(%s): started", serviceName)
+	glog.V(2).Infof("reconcileLoadBalancer(%s) - wabtLB(%t): started", serviceName, wantLb)
 	lb, _, _, err := az.getServiceLoadBalancer(service, clusterName, nodes, wantLb)
 	if err != nil {
 		return nil, err
 	}
 	lbName := *lb.Name
-	glog.V(2).Infof("reconcileLoadBalancer(%s): lb(%s) resolved load balancer name", serviceName, lbName)
+	glog.V(2).Infof("reconcileLoadBalancer(%s): lb(%s) wantLB(%t) resolved load balancer name", serviceName, lbName, wantLb)
 	lbFrontendIPConfigName := getFrontendIPConfigName(service, subnet(service))
 	lbFrontendIPConfigID := az.getFrontendIPConfigID(lbName, lbFrontendIPConfigName)
 	lbBackendPoolName := getBackendPoolName(clusterName)

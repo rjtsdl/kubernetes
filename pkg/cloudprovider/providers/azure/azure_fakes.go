@@ -122,7 +122,7 @@ func (fLBC fakeAzureLBClient) List(resourceGroupName string) (result network.Loa
 	return result, nil
 }
 
-func (fLBC fakeAzureLBClient) ListAllNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error) {
+func (fLBC fakeAzureLBClient) ListNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error) {
 	fLBC.mutex.Lock()
 	defer fLBC.mutex.Unlock()
 	result.Response.Response = &http.Response{
@@ -241,7 +241,7 @@ func (fAPC fakeAzurePIPClient) Get(resourceGroupName string, publicIPAddressName
 	}
 }
 
-func (fAPC fakeAzurePIPClient) ListAllNextResults(lastResults network.PublicIPAddressListResult) (result network.PublicIPAddressListResult, err error) {
+func (fAPC fakeAzurePIPClient) ListNextResults(lastResults network.PublicIPAddressListResult) (result network.PublicIPAddressListResult, err error) {
 	fAPC.mutex.Lock()
 	defer fAPC.mutex.Unlock()
 	return network.PublicIPAddressListResult{}, nil
@@ -378,7 +378,7 @@ func (fVMC fakeVirtualMachinesClient) List(resourceGroupName string) (result com
 	result.Value = &value
 	return result, nil
 }
-func (fVMC fakeVirtualMachinesClient) ListAllNextResults(lastResults compute.VirtualMachineListResult) (result compute.VirtualMachineListResult, err error) {
+func (fVMC fakeVirtualMachinesClient) ListNextResults(lastResults compute.VirtualMachineListResult) (result compute.VirtualMachineListResult, err error) {
 	fVMC.mutex.Lock()
 	defer fVMC.mutex.Unlock()
 	return compute.VirtualMachineListResult{}, nil
