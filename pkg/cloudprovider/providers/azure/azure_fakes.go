@@ -231,17 +231,15 @@ func (fAPC fakeAzurePIPClient) Get(resourceGroupName string, publicIPAddressName
 }
 
 func (fAPC fakeAzurePIPClient) ListComplete(resourceGroupName string, cancel <-chan struct{}) (<-chan network.PublicIPAddress, <-chan error) {
+	fAPC.mutex.Lock()
+	defer fAPC.mutex.Unlock()
 	resultChan := make(chan network.PublicIPAddress)
 	errChan := make(chan error, 1)
 	go func() {
-		fAPC.mutex.Lock()
-		defer fAPC.mutex.Unlock()
-
 		defer func() {
 			close(resultChan)
 			close(errChan)
 		}()
-
 		if _, ok := fAPC.FakeStore[resourceGroupName]; ok {
 			for _, v := range fAPC.FakeStore[resourceGroupName] {
 				resultChan <- v
