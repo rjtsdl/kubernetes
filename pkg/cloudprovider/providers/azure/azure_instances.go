@@ -229,7 +229,6 @@ func (az *Cloud) listAllNodesInResourceGroup() ([]compute.VirtualMachine, error)
 	}
 
 	return allNodes, nil
-
 }
 
 // mapNodeNameToVMName maps a k8s NodeName to an Azure VM Name
