@@ -92,15 +92,15 @@ func (az *Cloud) VirtualMachineClientListWithRetry() ([]compute.VirtualMachine, 
 			err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
 				var retryErr error
 				az.operationPollRateLimiter.Accept()
-				glog.V(10).Infof("VirtualMachinesClient.ListAllNextResults(%v): start", az.ResourceGroup)
-				result, retryErr = az.VirtualMachinesClient.ListAllNextResults(result)
-				glog.V(10).Infof("VirtualMachinesClient.ListAllNextResults(%v): end", az.ResourceGroup)
+				glog.V(10).Infof("VirtualMachinesClient.ListNextResults(%v): start", az.ResourceGroup)
+				result, retryErr = az.VirtualMachinesClient.ListNextResults(result)
+				glog.V(10).Infof("VirtualMachinesClient.ListNextResults(%v): end", az.ResourceGroup)
 				if retryErr != nil {
-					glog.Errorf("VirtualMachinesClient.ListAllNextResults(%v) - backoff: failure, will retry,err=%v",
+					glog.Errorf("VirtualMachinesClient.ListNextResults(%v) - backoff: failure, will retry,err=%v",
 						az.ResourceGroup, retryErr)
 					return false, retryErr
 				}
-				glog.V(2).Infof("VirtualMachinesClient.ListAllNextResults(%v): success", az.ResourceGroup)
+				glog.V(2).Infof("VirtualMachinesClient.ListNextResults(%v): success", az.ResourceGroup)
 				return true, nil
 			})
 			if err != nil {
@@ -188,16 +188,16 @@ func (az *Cloud) ListLBWithRetry() ([]network.LoadBalancer, error) {
 			err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
 				var retryErr error
 				az.operationPollRateLimiter.Accept()
-				glog.V(10).Infof("LoadBalancerClient.ListAllNextResults(%v): start", az.ResourceGroup)
-				result, retryErr = az.LoadBalancerClient.ListAllNextResults(result)
-				glog.V(10).Infof("LoadBalancerClient.ListAllNextResults(%v): end", az.ResourceGroup)
+				glog.V(10).Infof("LoadBalancerClient.ListNextResults(%v): start", az.ResourceGroup)
+				result, retryErr = az.LoadBalancerClient.ListNextResults(result)
+				glog.V(10).Infof("LoadBalancerClient.ListNextResults(%v): end", az.ResourceGroup)
 				if retryErr != nil {
-					glog.Errorf("LoadBalancerClient.ListAllNextResults(%v) - backoff: failure, will retry,err=%v",
+					glog.Errorf("LoadBalancerClient.ListNextResults(%v) - backoff: failure, will retry,err=%v",
 						az.ResourceGroup,
 						retryErr)
 					return false, retryErr
 				}
-				glog.V(2).Infof("LoadBalancerClient.ListAllNextResults(%v) - backoff: success", az.ResourceGroup)
+				glog.V(2).Infof("LoadBalancerClient.ListNextResults(%v) - backoff: success", az.ResourceGroup)
 				return true, nil
 			})
 			if err != nil {
@@ -243,16 +243,16 @@ func (az *Cloud) ListPIPWithRetry() ([]network.PublicIPAddress, error) {
 			err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
 				var retryErr error
 				az.operationPollRateLimiter.Accept()
-				glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): start", az.ResourceGroup)
-				result, retryErr = az.PublicIPAddressesClient.ListAllNextResults(result)
-				glog.V(10).Infof("PublicIPAddressesClient.ListAllNextResults(%v): end", az.ResourceGroup)
+				glog.V(10).Infof("PublicIPAddressesClient.ListNextResults(%v): start", az.ResourceGroup)
+				result, retryErr = az.PublicIPAddressesClient.ListNextResults(result)
+				glog.V(10).Infof("PublicIPAddressesClient.ListNextResults(%v): end", az.ResourceGroup)
 				if retryErr != nil {
-					glog.Errorf("PublicIPAddressesClient.ListAllNextResults(%v) - backoff: failure, will retry,err=%v",
+					glog.Errorf("PublicIPAddressesClient.ListNextResults(%v) - backoff: failure, will retry,err=%v",
 						az.ResourceGroup,
 						retryErr)
 					return false, retryErr
 				}
-				glog.V(2).Infof("PublicIPAddressesClient.ListAllNextResults(%v) - backoff: success", az.ResourceGroup)
+				glog.V(2).Infof("PublicIPAddressesClient.ListNextResults(%v) - backoff: success", az.ResourceGroup)
 				return true, nil
 			})
 			if err != nil {

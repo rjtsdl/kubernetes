@@ -123,7 +123,7 @@ type iVirtualMachinesClient interface {
 	CreateOrUpdate(resourceGroupName string, VMName string, parameters compute.VirtualMachine, cancel <-chan struct{}) (<-chan compute.VirtualMachine, <-chan error)
 	Get(resourceGroupName string, VMName string, expand compute.InstanceViewTypes) (result compute.VirtualMachine, err error)
 	List(resourceGroupName string) (result compute.VirtualMachineListResult, err error)
-	ListAllNextResults(lastResults compute.VirtualMachineListResult) (result compute.VirtualMachineListResult, err error)
+	ListNextResults(lastResults compute.VirtualMachineListResult) (result compute.VirtualMachineListResult, err error)
 }
 
 type iInterfacesClient interface {
@@ -136,7 +136,7 @@ type iLoadBalancersClient interface {
 	Delete(resourceGroupName string, loadBalancerName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
 	Get(resourceGroupName string, loadBalancerName string, expand string) (result network.LoadBalancer, err error)
 	List(resourceGroupName string) (result network.LoadBalancerListResult, err error)
-	ListAllNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error)
+	ListNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error)
 }
 
 type iPublicIPAddressesClient interface {
@@ -144,7 +144,7 @@ type iPublicIPAddressesClient interface {
 	Delete(resourceGroupName string, publicIPAddressName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
 	Get(resourceGroupName string, publicIPAddressName string, expand string) (result network.PublicIPAddress, err error)
 	List(resourceGroupName string) (result network.PublicIPAddressListResult, err error)
-	ListAllNextResults(lastResults network.PublicIPAddressListResult) (result network.PublicIPAddressListResult, err error)
+	ListNextResults(lastResults network.PublicIPAddressListResult) (result network.PublicIPAddressListResult, err error)
 }
 
 type iSubnetsClient interface {

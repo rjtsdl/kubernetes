@@ -217,11 +217,11 @@ func (az *Cloud) listAllNodesInResourceGroup() ([]compute.VirtualMachine, error)
 		allNodes = append(allNodes, *result.Value...)
 
 		az.operationPollRateLimiter.Accept()
-		glog.V(10).Infof("VirtualMachinesClient.ListAllNextResults(%v): start", az.ResourceGroup)
-		result, err = az.VirtualMachinesClient.ListAllNextResults(result)
-		glog.V(10).Infof("VirtualMachinesClient.ListAllNextResults(%v): end", az.ResourceGroup)
+		glog.V(10).Infof("VirtualMachinesClient.ListNextResults(%v): start", az.ResourceGroup)
+		result, err = az.VirtualMachinesClient.ListNextResults(result)
+		glog.V(10).Infof("VirtualMachinesClient.ListNextResults(%v): end", az.ResourceGroup)
 		if err != nil {
-			glog.Errorf("error: az.listAllNodesInResourceGroup(), az.VirtualMachinesClient.ListAllNextResults(%v), err=%v", result, err)
+			glog.Errorf("error: az.listAllNodesInResourceGroup(), az.VirtualMachinesClient.ListNextResults(%v), err=%v", result, err)
 			return nil, err
 		}
 
