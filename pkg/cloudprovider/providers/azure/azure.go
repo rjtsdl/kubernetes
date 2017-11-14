@@ -136,7 +136,7 @@ type iLoadBalancersClient interface {
 	Delete(resourceGroupName string, loadBalancerName string, cancel <-chan struct{}) (<-chan autorest.Response, <-chan error)
 	Get(resourceGroupName string, loadBalancerName string, expand string) (result network.LoadBalancer, err error)
 	List(resourceGroupName string) (result network.LoadBalancerListResult, err error)
-	ListNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error)
+	ListAllNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error)
 }
 
 type iPublicIPAddressesClient interface {

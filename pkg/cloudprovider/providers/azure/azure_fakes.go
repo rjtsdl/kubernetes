@@ -122,7 +122,7 @@ func (fLBC fakeAzureLBClient) List(resourceGroupName string) (result network.Loa
 	return result, nil
 }
 
-func (fLBC fakeAzureLBClient) ListNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error) {
+func (fLBC fakeAzureLBClient) ListAllNextResults(lastResult network.LoadBalancerListResult) (result network.LoadBalancerListResult, err error) {
 	fLBC.mutex.Lock()
 	defer fLBC.mutex.Unlock()
 	result.Response.Response = &http.Response{

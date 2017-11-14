@@ -178,7 +178,7 @@ func (az *Cloud) LoadBalancerClientListWithRetry() ([]network.LoadBalancer, erro
 			var retryErr error
 			az.operationPollRateLimiter.Accept()
 			glog.V(10).Infof("LoadBalancerClient.ListAllNextResults(%v): start", az.ResourceGroup)
-			result, retryErr = az.LoadBalancerClient.ListNextResults(result)
+			result, retryErr = az.LoadBalancerClient.ListAllNextResults(result)
 			glog.V(10).Infof("LoadBalancerClient.ListAllNextResults(%v): end", az.ResourceGroup)
 			if retryErr != nil {
 				glog.Errorf("backoff: failure, will retry,err=%v", retryErr)
