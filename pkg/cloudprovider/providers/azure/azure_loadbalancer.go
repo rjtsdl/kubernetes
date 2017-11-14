@@ -147,7 +147,7 @@ func (az *Cloud) getServiceLoadBalancer(service *v1.Service, clusterName string,
 	var defaultLB *network.LoadBalancer
 	defaultLBName := az.getLoadBalancerName(clusterName, az.Config.PrimaryAvailabilitySetName, isInternal)
 
-	lbs, err := az.LoadBalancerClientListWithRetry()
+	lbs, err := az.ListLBWithRetry()
 	if err != nil {
 		return nil, nil, false, err
 	}

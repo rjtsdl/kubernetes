@@ -149,8 +149,8 @@ func (az *Cloud) CreateOrUpdateLBWithRetry(lb network.LoadBalancer) error {
 	})
 }
 
-// LoadBalancerClientListWithRetry invokes az.VirtualMachinesClient.List with exponential backoff retry
-func (az *Cloud) LoadBalancerClientListWithRetry() ([]network.LoadBalancer, error) {
+// ListLBWithRetry invokes az.VirtualMachinesClient.List with exponential backoff retry
+func (az *Cloud) ListLBWithRetry() ([]network.LoadBalancer, error) {
 	allLBs := []network.LoadBalancer{}
 	var result network.LoadBalancerListResult
 	err := wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
