@@ -143,16 +143,17 @@ func (az *Cloud) EnsureLoadBalancerDeleted(clusterName string, service *v1.Servi
 // with added metadata (such as name, location) and existsLB set to FALSE
 // By default - cluster default LB is returned
 func (az *Cloud) getServiceLoadBalancer(service *v1.Service, clusterName string, nodes []*v1.Node, wantLb bool) (lb *network.LoadBalancer, status *v1.LoadBalancerStatus, exists bool, err error) {
-	lbListResult, _, err := az.listLoadBalancers()
 	isInternal := requiresInternalLoadBalancer(service)
 	var defaultLB *network.LoadBalancer
 	defaultLBName := az.getLoadBalancerName(clusterName, az.Config.PrimaryAvailabilitySetName, isInternal)
+
+	lbs, err := az.LoadBalancerClientListWithRetry()
 	if err != nil {
 		return nil, nil, false, err
 	}
-	if *lbListResult.Value != nil {
-		for lbx := range *lbListResult.Value {
-			lb := &(*lbListResult.Value)[lbx]
+	if lbs != nil {
+		for lbx := range lbs {
+			lb := &(lbs[lbx])
 			if strings.EqualFold(*lb.Name, defaultLBName) {
 				defaultLB = lb
 			}
@@ -174,7 +175,7 @@ func (az *Cloud) getServiceLoadBalancer(service *v1.Service, clusterName string,
 	// service does not have a load balancer, select one
 	if wantLb {
 		// select new load balancer for service
-		lb, exists, err = az.selectLoadBalancer(clusterName, service, lbListResult.Value, nodes)
+		lb, exists, err = az.selectLoadBalancer(clusterName, service, &lbs, nodes)
 		if err != nil {
 			return nil, nil, false, err
 		}

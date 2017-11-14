@@ -74,26 +74,6 @@ func (az *Cloud) getVirtualMachine(nodeName types.NodeName) (vm compute.VirtualM
 	return vm, exists, err
 }
 
-func (az *Cloud) listVirtualMachines() (vmListResult compute.VirtualMachineListResult, exists bool, err error) {
-	var realErr error
-
-	az.operationPollRateLimiter.Accept()
-	glog.V(10).Infof("VirtualMachinesClient.List(%s): start", az.ResourceGroup)
-	vmListResult, err = az.VirtualMachinesClient.List(az.ResourceGroup)
-	glog.V(10).Infof("VirtualMachinesClient.List(%s): end", az.ResourceGroup)
-
-	exists, realErr = checkResourceExistsFromError(err)
-	if realErr != nil {
-		return vmListResult, false, realErr
-	}
-
-	if !exists {
-		return vmListResult, false, nil
-	}
-
-	return vmListResult, exists, err
-}
-
 func (az *Cloud) getRouteTable() (routeTable network.RouteTable, exists bool, err error) {
 	var realErr error
 

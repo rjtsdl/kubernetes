@@ -143,7 +143,7 @@ func (az *Cloud) selectLoadBalancer(clusterName string, service *v1.Service, exi
 	if err != nil {
 		return nil, false, err
 	}
-	glog.V(3).Infof("selectLoadBalancer(%s): isInternal(%s) - availabilitysetsname %v", serviceName, *availabilitySetNames)
+	glog.Infof("selectLoadBalancer(%s): isInternal(%s) - availabilitysetsname %v", serviceName, *availabilitySetNames)
 	mapExistingLBs := map[string]*network.LoadBalancer{}
 	for lbx := range *existingLBs {
 		lb := (*existingLBs)[lbx]
@@ -238,7 +238,7 @@ func (az *Cloud) getLoadBalancerAvailabilitySetNames(service *v1.Service, nodes 
 // lists the virtual machines for for the resource group and then builds
 // a list of availability sets that match the nodes available to k8s
 func (az *Cloud) getAgentPoolAvailabiliySets(nodes []*v1.Node) (agentPoolAs *[]string, err error) {
-	vms, err := az.listAllNodesInResourceGroup()
+	vms, err := az.VirtualMachineClientListWithRetry()
 	if err != nil {
 		return nil, err
 	}
