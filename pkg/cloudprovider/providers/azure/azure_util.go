@@ -143,7 +143,7 @@ func (az *Cloud) selectLoadBalancer(clusterName string, service *v1.Service, exi
 	if err != nil {
 		return nil, false, err
 	}
-	glog.Infof("selectLoadBalancer(%s): isInternal(%s) - availabilitysetsname %v", serviceName, *availabilitySetNames)
+	glog.Infof("selectLoadBalancer(%s): isInternal(%s) - availabilitysetsname %v", serviceName, isInternal, *availabilitySetNames)
 	mapExistingLBs := map[string]*network.LoadBalancer{}
 	for lbx := range *existingLBs {
 		lb := (*existingLBs)[lbx]
@@ -179,7 +179,7 @@ func (az *Cloud) selectLoadBalancer(clusterName string, service *v1.Service, exi
 
 	if selectedLB == nil {
 		glog.Errorf("selectLoadBalancer service (%s) - unable to find load balancer for selected availability sets %v", serviceName, *availabilitySetNames)
-		return nil, false, fmt.Errorf("selectLoadBalancer- unable to find load balancer for selected availability sets %v", *availabilitySetNames)
+		return nil, false, fmt.Errorf("selectLoadBalancer (%s)- unable to find load balancer for selected availability sets %v", serviceName, *availabilitySetNames)
 	}
 	// validate if the selected LB has not exceeded the MaximumLoadBalancerRuleCount
 	if az.Config.MaximumLoadBalancerRuleCount != 0 && selectedLBRuleCount >= az.Config.MaximumLoadBalancerRuleCount {
