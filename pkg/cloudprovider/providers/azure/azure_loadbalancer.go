@@ -324,7 +324,7 @@ func (az *Cloud) ensurePublicIPExists(serviceName, pipName, domainNameLabel stri
 func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, nodes []*v1.Node, wantLb bool) (*network.LoadBalancer, error) {
 	isInternal := requiresInternalLoadBalancer(service)
 	serviceName := getServiceName(service)
-	glog.V(2).Infof("reconcileLoadBalancer(%s) - wabtLB(%t): started", serviceName, wantLb)
+	glog.V(2).Infof("reconcileLoadBalancer(%s) - wantLB(%t): started", serviceName, wantLb)
 	lb, _, _, err := az.getServiceLoadBalancer(service, clusterName, nodes, wantLb)
 	if err != nil {
 		return nil, err
