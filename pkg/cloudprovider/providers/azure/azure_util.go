@@ -316,10 +316,8 @@ func (az *Cloud) getLoadBalancerName(clusterName string, availabilitySetName str
 // The master role is determined by looking for:
 // * a kubernetes.io/role="master" label
 func isMasterNode(node *v1.Node) bool {
-	for k, v := range node.Labels {
-		if k == nodeLabelRole && v == "master" {
-			return true
-		}
+	if val, ok := node.Labels[nodeLabelRole]; ok && val == "master" {
+		return true
 	}
 
 	return false
