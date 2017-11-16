@@ -739,8 +739,8 @@ func getTestCloud() (az *Cloud) {
 	az.PublicIPAddressesClient = NewFakeAzurePIPClient(az.Config.SubscriptionID)
 	az.SubnetsClient = NewFakeAzureSubnetsClient()
 	az.SecurityGroupsClient = NewFakeAzureNSGClient()
-	az.VirtualMachinesClient = NewFakeVirtualMachinesClient()
-	az.InterfacesClient = NewFakeInterfacesClient()
+	az.VirtualMachinesClient = NewFakeAzureVirtualMachinesClient()
+	az.InterfacesClient = NewFakeAzureInterfacesClient()
 
 	return az
 }
