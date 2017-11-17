@@ -352,6 +352,9 @@ func (az *Cloud) determinePublicIPName(clusterName string, service *v1.Service) 
 
 func flipServiceInternalAnnotation(service *v1.Service) *v1.Service {
 	copyService := service.DeepCopy()
+	if copyService.Annotations == nil {
+		copyService.Annotations = map[string]string{}
+	}
 	if v, ok := copyService.Annotations[ServiceAnnotationLoadBalancerInternal]; ok && v == "true" {
 		// If it is internal now, we make it external by remove the annotation
 		delete(copyService.Annotations, ServiceAnnotationLoadBalancerInternal)
